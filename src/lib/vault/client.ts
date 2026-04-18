@@ -13,6 +13,29 @@ export class VaultAuthError extends Error {
   }
 }
 
+export class VaultConflictError extends Error {
+  readonly currentUpdatedAt: string | null;
+  readonly expectedUpdatedAt: string | null;
+  constructor(body: {
+    current_updated_at?: string | null;
+    expected_updated_at?: string | null;
+    message?: string;
+  }) {
+    super(body.message ?? "Note was edited elsewhere");
+    this.name = "VaultConflictError";
+    this.currentUpdatedAt = body.current_updated_at ?? null;
+    this.expectedUpdatedAt = body.expected_updated_at ?? null;
+  }
+}
+
+export interface UpdateNotePayload {
+  content?: string;
+  path?: string;
+  metadata?: Record<string, unknown>;
+  tags?: { add?: string[]; remove?: string[] };
+  if_updated_at?: string;
+}
+
 export class VaultClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -36,6 +59,14 @@ export class VaultClient {
 
     if (res.status === 401 || res.status === 403) {
       throw new VaultAuthError(`Vault rejected the token (${res.status})`);
+    }
+    if (res.status === 409) {
+      const body = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        current_updated_at?: string | null;
+        expected_updated_at?: string | null;
+      };
+      throw new VaultConflictError(body);
     }
     if (!res.ok) {
       const text = await res.text();
@@ -66,6 +97,13 @@ export class VaultClient {
     // The vault may return either a single note (when id is passed) or an array.
     if (Array.isArray(rows)) return rows[0] ?? null;
     return rows ?? null;
+  }
+
+  async updateNote(id: string, payload: UpdateNotePayload): Promise<Note> {
+    return this.request<Note>(`/api/notes/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
   }
 
   async listTags(): Promise<TagSummary[]> {

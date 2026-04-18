@@ -1,6 +1,6 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { VaultClient } from "./client";
+import { type UpdateNotePayload, VaultClient } from "./client";
 import { type NoteQueryState, buildNoteQueryParams } from "./note-query";
 import { loadToken } from "./storage";
 import { useVaultStore } from "./store";
@@ -62,5 +62,27 @@ export function useNote(id: string | undefined) {
     enabled: !!client && !!id,
     queryFn: () => client!.getNote(id!, { includeLinks: true, includeAttachments: true }),
     staleTime: 10_000,
+  });
+}
+
+export function useUpdateNote(id: string | undefined) {
+  const client = useActiveVaultClient();
+  const activeId = useVaultStore((s) => s.activeVaultId);
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: UpdateNotePayload) => {
+      if (!client || !id) throw new Error("No active vault");
+      return client.updateNote(id, payload);
+    },
+    onSuccess: (updated) => {
+      qc.setQueryData(["note", activeId, id], updated);
+      qc.invalidateQueries({ queryKey: ["notes", activeId] });
+      qc.invalidateQueries({ queryKey: ["tags", activeId] });
+      // If the path changed (→ new id), also seed the new key.
+      if (updated?.id && updated.id !== id) {
+        qc.setQueryData(["note", activeId, updated.id], updated);
+      }
+    },
   });
 }
