@@ -3,6 +3,7 @@ export * from "./discovery";
 export * from "./note-query";
 export * from "./oauth";
 export * from "./pkce";
+export * from "./probe";
 export * from "./queries";
 export * from "./storage";
 export * from "./store";
