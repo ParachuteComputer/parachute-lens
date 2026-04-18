@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { VaultAuthError, VaultClient } from "./client";
+import { VaultAuthError, VaultClient, VaultConflictError } from "./client";
 
 function mockFetch(response: { ok?: boolean; status?: number; json?: unknown; text?: string }) {
   return vi.fn<typeof fetch>(async () => {
@@ -141,6 +141,78 @@ describe("VaultClient", () => {
     });
     const note = await client.getNote("missing");
     expect(note).toBeNull();
+  });
+
+  it("updateNote sends PATCH with JSON body to /api/notes/:id", async () => {
+    const fetchImpl = mockFetch({
+      json: {
+        id: "Canon/Aaron",
+        path: "Canon/Aaron",
+        createdAt: "2026-04-16T00:00:00Z",
+        updatedAt: "2026-04-18T12:00:00Z",
+        content: "# hi",
+        tags: ["canon"],
+      },
+    });
+    const client = new VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+    });
+
+    await client.updateNote("Canon/Aaron", {
+      content: "# new",
+      tags: { add: ["draft"], remove: [] },
+      if_updated_at: "2026-04-18T11:00:00Z",
+    });
+
+    const call = fetchImpl.mock.calls[0];
+    expect(call?.[0]).toBe("http://localhost:1940/api/notes/Canon%2FAaron");
+    const init = call?.[1] as RequestInit;
+    expect(init.method).toBe("PATCH");
+    const headers = new Headers(init.headers);
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("Authorization")).toBe("Bearer pvt_abc");
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({
+      content: "# new",
+      tags: { add: ["draft"], remove: [] },
+      if_updated_at: "2026-04-18T11:00:00Z",
+    });
+  });
+
+  it("updateNote throws VaultConflictError on 409 with current/expected timestamps", async () => {
+    const fetchImpl = mockFetch({
+      ok: false,
+      status: 409,
+      json: {
+        message: "Note was modified",
+        current_updated_at: "2026-04-18T12:05:00Z",
+        expected_updated_at: "2026-04-18T11:00:00Z",
+      },
+    });
+    const client = new VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+    });
+
+    const err = await client
+      .updateNote("a", { content: "x", if_updated_at: "2026-04-18T11:00:00Z" })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(VaultConflictError);
+    expect((err as VaultConflictError).currentUpdatedAt).toBe("2026-04-18T12:05:00Z");
+    expect((err as VaultConflictError).expectedUpdatedAt).toBe("2026-04-18T11:00:00Z");
+  });
+
+  it("updateNote propagates 401 as VaultAuthError", async () => {
+    const fetchImpl = mockFetch({ ok: false, status: 401 });
+    const client = new VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+    });
+    await expect(client.updateNote("a", { content: "x" })).rejects.toBeInstanceOf(VaultAuthError);
   });
 
   it("listTags hits /api/tags and returns the summary array", async () => {
