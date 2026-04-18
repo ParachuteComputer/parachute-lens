@@ -1,10 +1,32 @@
-import { beginOAuth, normalizeVaultUrl } from "@/lib/vault";
-import { type FormEvent, useState } from "react";
+import { beginOAuth, normalizeVaultUrl, useOriginVaultProbe } from "@/lib/vault";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 export function AddVault() {
-  const [url, setUrl] = useState("");
+  const [searchParams] = useSearchParams();
+  const queryUrl = searchParams.get("url") ?? "";
+  const [url, setUrl] = useState(queryUrl);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const prefilled = useRef(queryUrl.length > 0);
+  const probe = useOriginVaultProbe();
+
+  // Auto-focus so the user can submit with Enter when the URL is pre-filled
+  // via ?url=... or the origin probe. Runs once on mount.
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // If the probe resolves with a detected origin and the user hasn't typed
+  // anything, seed the input. Don't clobber a ?url= value or user input.
+  useEffect(() => {
+    if (prefilled.current) return;
+    if (probe.status === "found" && probe.origin && url === "") {
+      setUrl(probe.origin);
+      prefilled.current = true;
+    }
+  }, [probe.status, probe.origin, url]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -42,6 +64,7 @@ export function AddVault() {
           </label>
           <input
             id="vault-url"
+            ref={inputRef}
             type="url"
             required
             placeholder="http://localhost:1940"
