@@ -101,7 +101,12 @@ describe("SyncStatusPanel headline", () => {
     discardRowMock.mockReset();
     clearMock.mockReset();
     estimateMock.mockReset();
-    estimateMock.mockResolvedValue({ supported: false, persisted: false, usage: null, quota: null });
+    estimateMock.mockResolvedValue({
+      supported: false,
+      persisted: false,
+      usage: null,
+      quota: null,
+    });
     mockStatus.mockReset();
     mockSync.mockReset();
     mockStatus.mockReturnValue({
@@ -189,7 +194,12 @@ describe("SyncStatusPanel needs-human actions", () => {
       isDraining: false,
       lastSyncedAt: null,
     });
-    estimateMock.mockResolvedValue({ supported: false, persisted: false, usage: null, quota: null });
+    estimateMock.mockResolvedValue({
+      supported: false,
+      persisted: false,
+      usage: null,
+      quota: null,
+    });
   });
   afterEach(() => {
     useVaultStore.setState({ vaults: {}, activeVaultId: null });
@@ -262,7 +272,12 @@ describe("SyncStatusPanel Clear-all", () => {
     seedVault();
     useToastStore.setState({ toasts: [] });
     clearMock.mockReset();
-    estimateMock.mockResolvedValue({ supported: false, persisted: false, usage: null, quota: null });
+    estimateMock.mockResolvedValue({
+      supported: false,
+      persisted: false,
+      usage: null,
+      quota: null,
+    });
     mockSync.mockReturnValue({
       db: {},
       blobStore: null,
