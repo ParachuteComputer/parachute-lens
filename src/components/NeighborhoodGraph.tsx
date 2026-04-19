@@ -54,7 +54,7 @@ function DepthControl({ depth, onChange }: { depth: number; onChange: (d: number
   for (let i = MIN_DEPTH; i <= MAX_DEPTH; i++) options.push(i);
   return (
     <fieldset className="flex items-center gap-1 text-xs text-fg-dim">
-      <legend className="mr-1 inline-block">Depth</legend>
+      <legend className="mr-1 inline-block">Hops</legend>
       {options.map((d) => (
         <button
           key={d}

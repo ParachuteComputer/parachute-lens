@@ -22,9 +22,13 @@ export interface NeighborhoodGraphData {
   edges: GraphEdge[];
 }
 
+// `depth` is the number of hops out from the anchor to expand. 1 = anchor +
+// direct neighbors, 2 = + 2-hop, and so on. DEFAULT_DEPTH stays at 1 to
+// preserve the previous UI behavior (the old semantics hid the anchor-only
+// state behind a "depth=1" that actually fetched nothing).
 export const MIN_DEPTH = 1;
 export const MAX_DEPTH = 3;
-export const DEFAULT_DEPTH = 2;
+export const DEFAULT_DEPTH = 1;
 
 export function buildNeighborhoodGraph(
   anchorId: string,
@@ -71,7 +75,7 @@ export async function expandNeighborhood(
   notes.set(anchor.id, anchor);
 
   let frontier: Note[] = [anchor];
-  for (let layer = 1; layer < depth; layer++) {
+  for (let layer = 1; layer <= depth; layer++) {
     const toFetch = new Set<string>();
     for (const note of frontier) {
       for (const l of note.links ?? []) {
