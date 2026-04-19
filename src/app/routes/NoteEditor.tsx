@@ -5,6 +5,7 @@ import type { CodeMirrorEditorHandle } from "@/components/CodeMirrorEditor";
 import { CodeMirrorEditor } from "@/components/CodeMirrorEditor";
 import { DeleteNoteButton } from "@/components/DeleteNoteButton";
 import { MarkdownView, buildWikilinkResolver } from "@/components/MarkdownView";
+import { PinArchiveButtons } from "@/components/PinArchiveButtons";
 import { RemoveAttachmentButton } from "@/components/RemoveAttachmentButton";
 import { TagEditor, normalizeTag } from "@/components/TagEditor";
 import { useAttachmentUploader } from "@/components/useAttachmentUploader";
@@ -194,7 +195,8 @@ function EditorSurface({ note }: { note: Note }) {
               <span className="text-xs text-fg-dim">saved {relativeTime(note.updatedAt)}</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <PinArchiveButtons note={note} />
             <DeleteNoteButton note={note} />
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
             <button

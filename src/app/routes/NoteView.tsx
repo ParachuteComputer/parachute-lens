@@ -1,6 +1,7 @@
 import { DeleteNoteButton } from "@/components/DeleteNoteButton";
 import { MarkdownView, buildWikilinkResolver } from "@/components/MarkdownView";
 import { NeighborhoodGraph } from "@/components/NeighborhoodGraph";
+import { PinArchiveButtons } from "@/components/PinArchiveButtons";
 import { TranscriptionStatus } from "@/components/TranscriptionStatus";
 import { pushRecent } from "@/lib/quick-switch/recents";
 import { relativeTime } from "@/lib/time";
@@ -76,13 +77,14 @@ function NoteBody({ note }: { note: Note }) {
             {note.path ? pathTitle(note.path) : note.id}
           </h1>
           {summary ? <p className="mt-3 text-fg-muted">{summary}</p> : null}
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Link
               to={`/notes/${encodeURIComponent(note.id)}/edit`}
               className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-fg-muted hover:text-accent"
             >
               Edit
             </Link>
+            <PinArchiveButtons note={note} keyboard />
             <DeleteNoteButton note={note} />
           </div>
         </header>

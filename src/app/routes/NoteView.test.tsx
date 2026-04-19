@@ -1,7 +1,7 @@
 import { NoteView } from "@/app/routes/NoteView";
 import { useVaultStore } from "@/lib/vault/store";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,7 +11,7 @@ interface FetchMap {
 }
 
 function installFetch(map: FetchMap) {
-  const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchImpl = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     for (const matcher of Object.keys(map)) {
       if (url.includes(matcher)) {
@@ -261,5 +261,86 @@ describe("NoteView route", () => {
     renderAt("/notes/any");
     expect(await screen.findByText(/session expired/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /reconnect/i })).toHaveAttribute("href", "/add");
+  });
+
+  it("clicking Pin PATCHes the note with the pinned role tag", async () => {
+    const fetchImpl = installFetch({
+      "/api/notes": {
+        body: {
+          id: "abc-123",
+          path: "some/note",
+          createdAt: "2026-04-16T04:30:54.177Z",
+          updatedAt: "2026-04-17T00:05:07.721Z",
+          content: "body",
+          tags: [],
+          links: [],
+          attachments: [],
+        },
+      },
+    });
+    renderAt("/notes/abc-123");
+
+    const pinBtn = await screen.findByRole("button", { name: /^☆ Pin$/ });
+    fireEvent.click(pinBtn);
+
+    await waitFor(() => {
+      const patchCall = fetchImpl.mock.calls.find((c) => {
+        const init = c[1] as RequestInit | undefined;
+        return init?.method === "PATCH";
+      });
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse((patchCall![1] as RequestInit).body as string);
+      expect(body.tags).toEqual({ add: ["pinned"] });
+    });
+  });
+
+  it("shows the Pinned state and Unarchive label based on current tags", async () => {
+    installFetch({
+      "/api/notes": {
+        body: {
+          id: "n",
+          path: "note",
+          createdAt: "2026-04-16T04:30:54.177Z",
+          content: "body",
+          tags: ["pinned", "archived"],
+          links: [],
+          attachments: [],
+        },
+      },
+    });
+    renderAt("/notes/n");
+
+    expect(await screen.findByRole("button", { name: /★ Pinned/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Archived$/ })).toBeInTheDocument();
+  });
+
+  it("pressing P toggles the pinned tag", async () => {
+    const fetchImpl = installFetch({
+      "/api/notes": {
+        body: {
+          id: "k",
+          path: "keyboard",
+          createdAt: "2026-04-16T04:30:54.177Z",
+          content: "body",
+          tags: [],
+          links: [],
+          attachments: [],
+        },
+      },
+    });
+    renderAt("/notes/k");
+
+    await screen.findByRole("button", { name: /^☆ Pin$/ });
+    fireEvent.keyDown(window, { key: "p" });
+
+    await waitFor(() => {
+      const patchCall = fetchImpl.mock.calls.find((c) => {
+        const init = c[1] as RequestInit | undefined;
+        return init?.method === "PATCH";
+      });
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse((patchCall![1] as RequestInit).body as string);
+      expect(body.tags).toEqual({ add: ["pinned"] });
+    });
   });
 });

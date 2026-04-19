@@ -65,6 +65,20 @@ export const COMMANDS: Array<{
     keywords: ["notes", "all"],
     action: { type: "navigate", to: "/notes" },
   },
+  {
+    id: "pinned",
+    label: "Pinned",
+    description: "Notes tagged as pinned",
+    keywords: ["pinned", "star", "favorites"],
+    action: { type: "navigate", to: "/pinned" },
+  },
+  {
+    id: "archived",
+    label: "Archived",
+    description: "Notes tagged as archived",
+    keywords: ["archived", "archive"],
+    action: { type: "navigate", to: "/archived" },
+  },
 ];
 
 function matchesAny(keywords: string[], q: string): number | null {

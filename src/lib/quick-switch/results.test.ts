@@ -107,6 +107,14 @@ describe("computeResults", () => {
   });
 
   it("exposes the static command list so tests can drive by id", () => {
-    expect(COMMANDS.map((c) => c.id)).toEqual(["new", "capture", "graph", "tags", "notes"]);
+    expect(COMMANDS.map((c) => c.id)).toEqual([
+      "new",
+      "capture",
+      "graph",
+      "tags",
+      "notes",
+      "pinned",
+      "archived",
+    ]);
   });
 });
