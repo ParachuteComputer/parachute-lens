@@ -122,7 +122,7 @@ describe("NeighborhoodGraph", () => {
     ],
   };
 
-  it("renders the graph with anchor and neighbors at depth 2", async () => {
+  it("renders the graph with anchor and 1-hop neighbors at the default depth", async () => {
     seedActiveVault();
     mockFetchReturning({
       B: { id: "B", path: "notes/B", createdAt: "2026-04-18T00:00:00.000Z" },
@@ -170,28 +170,30 @@ describe("NeighborhoodGraph", () => {
     await waitFor(() => expect(screen.getByTestId("note-route")).toBeInTheDocument());
   });
 
-  it("depth=1 does not fetch any neighbors", async () => {
+  it("expands to 2-hop neighbors when Hops is raised", async () => {
     seedActiveVault();
-    const fetchImpl = mockFetchReturning({
-      B: { id: "B", path: "notes/B", createdAt: "2026-04-18T00:00:00.000Z" },
+    mockFetchReturning({
+      B: {
+        id: "B",
+        path: "notes/B",
+        createdAt: "2026-04-18T00:00:00.000Z",
+        links: [{ sourceId: "B", targetId: "D", relationship: "wikilink" }],
+      },
       C: { id: "C", path: "notes/C", createdAt: "2026-04-18T00:00:00.000Z" },
+      D: { id: "D", path: "notes/D", createdAt: "2026-04-18T00:00:00.000Z" },
     });
     render(
       <Wrap>
         <NeighborhoodGraph anchor={anchor} />
       </Wrap>,
     );
-    // Settle depth 2 default first (renders with 3 nodes).
     await waitFor(() => expect(screen.getByTestId("node-count").textContent).toBe("3"));
-    fetchImpl.mockClear();
 
-    const depth1 = screen.getByRole("button", { name: "1" });
+    const depth2 = screen.getByRole("button", { name: "2" });
     await act(async () => {
-      fireEvent.click(depth1);
+      fireEvent.click(depth2);
     });
-
-    await waitFor(() => expect(screen.getByText(/no neighbors yet/i)).toBeInTheDocument());
-    expect(fetchImpl).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("node-count").textContent).toBe("4"));
   });
 
   it("collapses and re-expands via the header toggle", async () => {
@@ -211,6 +213,6 @@ describe("NeighborhoodGraph", () => {
       fireEvent.click(toggle);
     });
     expect(screen.queryByTestId("mock-force-graph")).not.toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: /graph depth/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /hops/i })).not.toBeInTheDocument();
   });
 });

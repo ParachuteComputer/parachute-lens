@@ -89,18 +89,7 @@ describe("buildNeighborhoodGraph", () => {
 });
 
 describe("expandNeighborhood", () => {
-  it("returns just the anchor at depth 1", async () => {
-    const anchor = note("A", [["A", "B"]]);
-    const fetched: string[] = [];
-    const result = await expandNeighborhood(anchor, 1, async (id) => {
-      fetched.push(id);
-      return null;
-    });
-    expect(fetched).toEqual([]);
-    expect([...result.keys()]).toEqual(["A"]);
-  });
-
-  it("fetches 1-hop neighbors at depth 2", async () => {
+  it("fetches 1-hop neighbors at depth 1", async () => {
     const anchor = note("A", [
       ["A", "B"],
       ["C", "A"],
@@ -110,12 +99,12 @@ describe("expandNeighborhood", () => {
       fetched.push(id);
       return note(id);
     };
-    const result = await expandNeighborhood(anchor, 2, fetchNote);
+    const result = await expandNeighborhood(anchor, 1, fetchNote);
     expect(fetched.sort()).toEqual(["B", "C"]);
     expect([...result.keys()].sort()).toEqual(["A", "B", "C"]);
   });
 
-  it("fetches 2-hop neighbors at depth 3", async () => {
+  it("fetches 2-hop neighbors at depth 2", async () => {
     const anchor = note("A", [["A", "B"]]);
     const neighbors = new Map<string, Note>([
       ["B", note("B", [["B", "C"]])],
@@ -126,9 +115,26 @@ describe("expandNeighborhood", () => {
       fetched.push(id);
       return neighbors.get(id) ?? null;
     };
-    const result = await expandNeighborhood(anchor, 3, fetchNote);
+    const result = await expandNeighborhood(anchor, 2, fetchNote);
     expect(fetched).toEqual(["B", "C"]);
     expect([...result.keys()].sort()).toEqual(["A", "B", "C"]);
+  });
+
+  it("fetches 3-hop neighbors at depth 3", async () => {
+    const anchor = note("A", [["A", "B"]]);
+    const neighbors = new Map<string, Note>([
+      ["B", note("B", [["B", "C"]])],
+      ["C", note("C", [["C", "D"]])],
+      ["D", note("D")],
+    ]);
+    const fetched: string[] = [];
+    const fetchNote = async (id: string) => {
+      fetched.push(id);
+      return neighbors.get(id) ?? null;
+    };
+    const result = await expandNeighborhood(anchor, 3, fetchNote);
+    expect(fetched).toEqual(["B", "C", "D"]);
+    expect([...result.keys()].sort()).toEqual(["A", "B", "C", "D"]);
   });
 
   it("stops early if a layer has no new ids to fetch", async () => {
