@@ -1,7 +1,7 @@
 import { Notes } from "@/app/routes/Notes";
 import { useVaultStore } from "@/lib/vault/store";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { BrowserRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -165,5 +165,94 @@ describe("Notes route", () => {
     });
 
     expect(await screen.findByText(/no notes match these filters/i)).toBeInTheDocument();
+  });
+
+  it("pinned-first stable sort on default /notes", async () => {
+    installFetch({
+      notes: [
+        {
+          id: "a",
+          path: "plain-one",
+          tags: [],
+          createdAt: "2026-04-18T10:00:00.000Z",
+          updatedAt: "2026-04-18T11:00:00.000Z",
+        },
+        {
+          id: "b",
+          path: "pinned-note",
+          tags: ["pinned"],
+          createdAt: "2026-04-18T09:00:00.000Z",
+          updatedAt: "2026-04-18T09:00:00.000Z",
+        },
+        {
+          id: "c",
+          path: "plain-two",
+          tags: [],
+          createdAt: "2026-04-18T08:00:00.000Z",
+          updatedAt: "2026-04-18T08:00:00.000Z",
+        },
+      ],
+      tags: [],
+    });
+
+    render(<Notes />, { wrapper: Wrapper });
+
+    await screen.findByText("pinned-note");
+    const rows = screen.getAllByRole("listitem");
+    const firstRow = within(rows[0]!);
+    expect(firstRow.getByText("pinned-note")).toBeInTheDocument();
+    // Pin indicator visible on the pinned row.
+    expect(firstRow.getByLabelText(/pinned/i)).toBeInTheDocument();
+  });
+
+  it("hides archived notes by default and shows them when toggled on", async () => {
+    installFetch({
+      notes: [
+        {
+          id: "a",
+          path: "live-note",
+          tags: [],
+          createdAt: "2026-04-18T10:00:00.000Z",
+        },
+        {
+          id: "b",
+          path: "archived-note",
+          tags: ["archived"],
+          createdAt: "2026-04-18T09:00:00.000Z",
+        },
+      ],
+      tags: [],
+    });
+
+    render(<Notes />, { wrapper: Wrapper });
+
+    await screen.findByText("live-note");
+    expect(screen.queryByText("archived-note")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/show archived/i));
+    await waitFor(() => {
+      expect(screen.getByText("archived-note")).toBeInTheDocument();
+    });
+  });
+
+  it("preset=pinned sends the pinned role tag and hides the show-archived toggle", async () => {
+    const fetchImpl = installFetch({ notes: [], tags: [] });
+    render(<Notes preset="pinned" />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(lastNotesUrl(fetchImpl)).toContain("tag=pinned");
+    });
+    expect(screen.queryByLabelText(/show archived/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pinned" })).toBeInTheDocument();
+  });
+
+  it("preset=archived sends the archived role tag", async () => {
+    const fetchImpl = installFetch({ notes: [], tags: [] });
+    render(<Notes preset="archived" />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(lastNotesUrl(fetchImpl)).toContain("tag=archived");
+    });
+    expect(screen.getByRole("heading", { name: "Archived" })).toBeInTheDocument();
   });
 });

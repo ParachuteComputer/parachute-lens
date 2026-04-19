@@ -6,6 +6,7 @@ import {
   type NoteQueryState,
   isFilteringActive,
   useNotes,
+  useTagRoles,
   useTags,
   useVaultStore,
 } from "@/lib/vault";
@@ -14,8 +15,16 @@ import type { Note, TagSummary } from "@/lib/vault/types";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 
-export function Notes() {
+export type NotesPreset = "pinned" | "archived";
+
+const PRESET_TITLES: Record<NotesPreset, string> = {
+  pinned: "Pinned",
+  archived: "Archived",
+};
+
+export function Notes({ preset }: { preset?: NotesPreset } = {}) {
   const activeVault = useVaultStore((s) => s.getActiveVault());
+  const { roles } = useTagRoles(activeVault?.id ?? null);
   const [searchParams] = useSearchParams();
 
   const [search, setSearch] = useState("");
@@ -25,36 +34,67 @@ export function Notes() {
   const [tagMatch, setTagMatch] = useState<"any" | "all">("any");
   const [sort, setSort] = useState<"asc" | "desc">("desc");
   const [offset, setOffset] = useState(0);
+  const [showArchived, setShowArchived] = useState(false);
 
   const debouncedSearch = useDebouncedValue(search, 300);
   const debouncedPrefix = useDebouncedValue(pathPrefix, 300);
+
+  // Merge the preset role tag into the query so vault-side filter does the
+  // narrowing. User can add more tags on top via TagFilter.
+  const effectiveTags = useMemo(() => {
+    if (preset === "pinned") return Array.from(new Set([roles.pinned, ...selectedTags]));
+    if (preset === "archived") return Array.from(new Set([roles.archived, ...selectedTags]));
+    return selectedTags;
+  }, [preset, roles.pinned, roles.archived, selectedTags]);
+
+  const effectiveTagMatch: "any" | "all" = preset ? "all" : tagMatch;
 
   // Any filter change resets pagination.
   // biome-ignore lint/correctness/useExhaustiveDependencies: offset is the target, not a trigger
   useEffect(() => {
     setOffset(0);
-  }, [debouncedSearch, debouncedPrefix, selectedTags, tagMatch, sort]);
+  }, [debouncedSearch, debouncedPrefix, effectiveTags, effectiveTagMatch, sort, showArchived]);
 
   const queryState: NoteQueryState = useMemo(
     () => ({
       ...DEFAULT_NOTE_QUERY,
       search: debouncedSearch,
       pathPrefix: debouncedPrefix,
-      tags: selectedTags,
-      tagMatch,
+      tags: effectiveTags,
+      tagMatch: effectiveTagMatch,
       sort,
       offset,
     }),
-    [debouncedSearch, debouncedPrefix, selectedTags, tagMatch, sort, offset],
+    [debouncedSearch, debouncedPrefix, effectiveTags, effectiveTagMatch, sort, offset],
   );
 
   const notes = useNotes(queryState);
   const tags = useTags();
 
+  // Client-side post-process: hide archived on default list unless toggled, and
+  // pinned-first stable sort on default list. Preset views skip both.
+  const displayNotes = useMemo(() => {
+    if (!notes.data) return notes.data;
+    let list = notes.data;
+    if (!preset && !showArchived) {
+      list = list.filter((n) => !(n.tags ?? []).includes(roles.archived));
+    }
+    if (!preset) {
+      const pinnedTag = roles.pinned;
+      list = [...list].sort((a, b) => {
+        const ap = (a.tags ?? []).includes(pinnedTag) ? 0 : 1;
+        const bp = (b.tags ?? []).includes(pinnedTag) ? 0 : 1;
+        return ap - bp;
+      });
+    }
+    return list;
+  }, [notes.data, preset, showArchived, roles.archived, roles.pinned]);
+
   if (!activeVault) return <Navigate to="/" replace />;
 
+  const title = preset ? PRESET_TITLES[preset] : "Notes";
   const pageFirst = offset + 1;
-  const pageLast = offset + (notes.data?.length ?? 0);
+  const pageLast = offset + (displayNotes?.length ?? 0);
   const hasPrev = offset > 0;
   const hasNext = (notes.data?.length ?? 0) === DEFAULT_PAGE_SIZE;
 
@@ -63,9 +103,19 @@ export function Notes() {
       <header className="mb-6 flex items-baseline justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-wider text-fg-dim">{activeVault.name}</p>
-          <h1 className="font-serif text-3xl tracking-tight">Notes</h1>
+          <h1 className="font-serif text-3xl tracking-tight">{title}</h1>
         </div>
         <div className="flex items-center gap-4">
+          {!preset ? (
+            <label className="flex items-center gap-1.5 text-sm text-fg-muted hover:text-accent">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+              />
+              Show archived
+            </label>
+          ) : null}
           <button
             type="button"
             onClick={() => setSort((s) => (s === "desc" ? "asc" : "desc"))}
@@ -120,14 +170,14 @@ export function Notes() {
         <SkeletonRows />
       ) : notes.isError ? (
         <ErrorBlock error={notes.error} />
-      ) : notes.data && notes.data.length > 0 ? (
+      ) : displayNotes && displayNotes.length > 0 ? (
         <ol className="divide-y divide-border rounded-md border border-border bg-card">
-          {notes.data.map((n) => (
-            <NoteRow key={n.id} note={n} />
+          {displayNotes.map((n) => (
+            <NoteRow key={n.id} note={n} pinnedTag={roles.pinned} archivedTag={roles.archived} />
           ))}
         </ol>
       ) : (
-        <EmptyBlock filtering={isFilteringActive(queryState)} />
+        <EmptyBlock filtering={isFilteringActive(queryState) || !!preset} />
       )}
 
       <div className="mt-6 flex items-center justify-between text-sm text-fg-dim">
@@ -161,17 +211,30 @@ export function Notes() {
   );
 }
 
-function NoteRow({ note }: { note: Note }) {
+function NoteRow({
+  note,
+  pinnedTag,
+  archivedTag,
+}: { note: Note; pinnedTag: string; archivedTag: string }) {
   const label = note.path ?? note.id;
   const stamp = note.updatedAt ?? note.createdAt;
+  const isPinned = (note.tags ?? []).includes(pinnedTag);
+  const isArchived = (note.tags ?? []).includes(archivedTag);
   return (
-    <li>
+    <li className={isArchived ? "opacity-60 italic" : undefined}>
       <Link
         to={`/notes/${encodeURIComponent(note.id)}`}
         className="block px-4 py-3 hover:bg-bg/60 focus:bg-bg/60 focus:outline-none"
       >
         <div className="flex items-baseline justify-between gap-4">
-          <span className="truncate font-mono text-sm text-fg">{label}</span>
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            {isPinned ? (
+              <span className="shrink-0 text-accent" aria-label="pinned" title="pinned">
+                ★
+              </span>
+            ) : null}
+            <span className="truncate font-mono text-sm text-fg">{label}</span>
+          </span>
           <span className="shrink-0 text-xs text-fg-dim">{relativeTime(stamp)}</span>
         </div>
         {note.preview ? (
