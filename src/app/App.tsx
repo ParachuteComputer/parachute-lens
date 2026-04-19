@@ -5,6 +5,7 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { SyncProvider } from "@/providers/SyncProvider";
 import { BrowserRouter, Route, Routes } from "react-router";
+import { Activity } from "./routes/Activity";
 import { AddVault } from "./routes/AddVault";
 import { Calendar } from "./routes/Calendar";
 import { Capture } from "./routes/Capture";
@@ -42,6 +43,7 @@ export function App() {
                 <Route path="/graph" element={<VaultGraph />} />
                 <Route path="/today" element={<Today />} />
                 <Route path="/calendar" element={<Calendar />} />
+                <Route path="/activity" element={<Activity />} />
                 <Route path="/notes/:id" element={<NoteView />} />
                 <Route path="/notes/:id/edit" element={<NoteEditor />} />
                 <Route path="/add" element={<AddVault />} />

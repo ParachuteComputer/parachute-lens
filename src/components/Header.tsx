@@ -56,6 +56,9 @@ export function Header() {
               <Link to="/graph" className="text-sm text-fg-muted hover:text-accent">
                 Graph
               </Link>
+              <Link to="/activity" className="text-sm text-fg-muted hover:text-accent">
+                Activity
+              </Link>
               <Link to="/capture" className="text-sm text-fg-muted hover:text-accent">
                 + Capture
               </Link>
@@ -127,6 +130,9 @@ export function Header() {
               </Link>
               <Link to="/graph" className="py-1 text-sm text-fg hover:text-accent">
                 Graph
+              </Link>
+              <Link to="/activity" className="py-1 text-sm text-fg hover:text-accent">
+                Activity
               </Link>
               <Link to="/capture" className="py-1 text-sm text-fg hover:text-accent">
                 + Capture
