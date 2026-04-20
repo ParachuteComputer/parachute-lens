@@ -43,8 +43,8 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/notes/");
   });
 
-  it("resolves NoteView at external /notes/n/<id>", () => {
-    window.history.replaceState({}, "", "/notes/n/some-id");
+  it("resolves NoteView at external /notes/<id>", () => {
+    window.history.replaceState({}, "", "/notes/some-id");
     render(<App />);
     // With no vault the NoteView route redirects internally to "/" (basename
     // strips /notes). The critical regression guard: the external URL must

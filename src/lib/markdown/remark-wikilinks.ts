@@ -21,8 +21,8 @@ function splitTextNode(text: string, resolve: WikilinkResolver): RootContent[] {
     const display = (match[2]?.trim() || target).trim();
     const resolved = resolve(target);
     const href = resolved
-      ? `/n/${encodeURIComponent(resolved.id)}`
-      : `/n/${encodeURIComponent(target)}`;
+      ? `/${encodeURIComponent(resolved.id)}`
+      : `/${encodeURIComponent(target)}`;
     out.push({
       type: "link",
       url: href,

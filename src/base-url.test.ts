@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 //
 // BASE_URL is the external mount prefix for the whole app bundle: it governs
 // (a) Vite's asset URL resolution at build time and (b) the Router basename
-// at runtime. Internal route paths (`/`, `/n/:id`, `/pinned`…) are written
+// at runtime. Internal route paths (`/`, `/:id`, `/pinned`…) are written
 // as if the app were mounted at the origin root; BrowserRouter's basename
 // strips the external prefix on read and prepends it on write. Moving the
 // mount is a one-line change here — not a route-by-route search-and-replace.

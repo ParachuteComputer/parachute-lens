@@ -55,8 +55,8 @@ export function App() {
                 <Route path="/today" element={<Today />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/activity" element={<Activity />} />
-                <Route path="/n/:id" element={<NoteView />} />
-                <Route path="/n/:id/edit" element={<NoteEditor />} />
+                <Route path="/:id" element={<NoteView />} />
+                <Route path="/:id/edit" element={<NoteEditor />} />
                 <Route path="/add" element={<AddVault />} />
                 <Route path="/oauth/callback" element={<OAuthCallback />} />
                 <Route path="/vaults" element={<Vaults />} />

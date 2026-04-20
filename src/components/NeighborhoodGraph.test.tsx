@@ -72,11 +72,11 @@ function Wrap({ children }: { children: React.ReactNode }) {
     defaultOptions: { queries: { retry: false } },
   });
   return (
-    <MemoryRouter initialEntries={["/n/A"]}>
+    <MemoryRouter initialEntries={["/A"]}>
       <QueryClientProvider client={qc}>
         <Routes>
-          <Route path="/n/A" element={children} />
-          <Route path="/n/:id" element={<div data-testid="note-route" />} />
+          <Route path="/A" element={children} />
+          <Route path="/:id" element={<div data-testid="note-route" />} />
         </Routes>
       </QueryClientProvider>
     </MemoryRouter>

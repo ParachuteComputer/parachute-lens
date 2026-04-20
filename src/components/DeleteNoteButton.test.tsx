@@ -75,9 +75,9 @@ const note: Note = {
 
 function renderButton() {
   return render(
-    <MemoryRouter initialEntries={["/n/note-abc"]}>
+    <MemoryRouter initialEntries={["/note-abc"]}>
       <Routes>
-        <Route path="/n/note-abc" element={<DeleteNoteButton note={note} />} />
+        <Route path="/note-abc" element={<DeleteNoteButton note={note} />} />
         <Route path="/" element={<div>NotesListPage</div>} />
       </Routes>
     </MemoryRouter>,

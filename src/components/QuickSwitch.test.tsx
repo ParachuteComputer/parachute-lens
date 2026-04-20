@@ -94,7 +94,7 @@ describe("QuickSwitch", () => {
     });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/n/canon"));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/canon"));
   });
 
   it("arrow keys move the selection", async () => {
@@ -115,7 +115,7 @@ describe("QuickSwitch", () => {
     // Second entry gets selected.
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/n/b"));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/b"));
   });
 
   it("Escape closes the switcher", async () => {

@@ -512,7 +512,7 @@ function NoteRow({
     <li className={isArchived ? "opacity-60 italic" : undefined}>
       <div className="flex items-stretch">
         <Link
-          to={`/n/${encodeURIComponent(note.id)}`}
+          to={`/${encodeURIComponent(note.id)}`}
           className="block flex-1 min-w-0 px-4 py-3 hover:bg-bg/60 focus:bg-bg/60 focus:outline-none"
         >
           <div className="flex items-baseline justify-between gap-4">

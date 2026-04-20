@@ -89,7 +89,7 @@ export function NoteNew() {
           }
         }
         pushToast(`Created ${created.path ?? created.id}`, "success");
-        navigate(`/n/${encodeURIComponent(created.id)}`);
+        navigate(`/${encodeURIComponent(created.id)}`);
       },
       onError: (err) => {
         if (err instanceof VaultAuthError) {
