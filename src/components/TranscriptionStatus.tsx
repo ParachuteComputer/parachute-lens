@@ -1,8 +1,9 @@
-// Single-purpose chip for voice-memo notes. Vault's transcription-worker
-// seeds the note with `_Transcript pending._` and swaps it for either the
-// transcript or `_Transcription unavailable._` when it finishes. We mirror
-// that state into the editor so the user isn't staring at a placeholder
-// wondering whether anything is happening.
+// Single-purpose chip for voice-memo notes. Lens seeds the note with
+// `_Transcript pending._` at capture time (see `memoNoteContent()` in
+// `src/lib/capture/recorder.ts`); vault's transcription-worker swaps it
+// for either the transcript or `_Transcription unavailable._` when it
+// finishes. We mirror that state into the editor so the user isn't
+// staring at a placeholder wondering whether anything is happening.
 
 const PENDING_MARKER = "_Transcript pending._";
 const UNAVAILABLE_MARKER = "_Transcription unavailable._";
