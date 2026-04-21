@@ -11,18 +11,18 @@ import {
 } from "./services-manifest";
 
 function tempPath(): { path: string; cleanup: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), "pnotes-manifest-"));
+  const dir = mkdtempSync(join(tmpdir(), "plens-manifest-"));
   const path = join(dir, "services.json");
   return { path, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-const notes: ServiceEntry = {
-  name: "parachute-notes",
+const lens: ServiceEntry = {
+  name: "parachute-lens",
   port: 1942,
-  paths: ["/notes/"],
-  health: "/notes/",
+  paths: ["/lens/"],
+  health: "/lens/",
   version: "0.0.1",
-  displayName: "Notes",
+  displayName: "Lens",
   tagline: "Web client for your Parachute Vault",
 };
 
@@ -47,9 +47,9 @@ describe("services-manifest", () => {
   it("upsertService creates the file if missing", () => {
     const { path, cleanup } = tempPath();
     try {
-      const m = upsertService(notes, path);
-      expect(m.services).toEqual([notes]);
-      expect(readManifest(path)).toEqual({ services: [notes] });
+      const m = upsertService(lens, path);
+      expect(m.services).toEqual([lens]);
+      expect(readManifest(path)).toEqual({ services: [lens] });
     } finally {
       cleanup();
     }
@@ -58,8 +58,8 @@ describe("services-manifest", () => {
   it("upsertService updates by name and never duplicates", () => {
     const { path, cleanup } = tempPath();
     try {
-      upsertService(notes, path);
-      const updated = { ...notes, port: 4200, version: "0.1.0" };
+      upsertService(lens, path);
+      const updated = { ...lens, port: 4200, version: "0.1.0" };
       upsertService(updated, path);
       const m = readManifest(path);
       expect(m.services).toHaveLength(1);
@@ -73,11 +73,11 @@ describe("services-manifest", () => {
     const { path, cleanup } = tempPath();
     try {
       writeFileSync(path, `${JSON.stringify({ services: [vault] }, null, 2)}\n`);
-      upsertService(notes, path);
+      upsertService(lens, path);
       const m = readManifest(path);
       expect(m.services).toHaveLength(2);
       expect(m.services.find((s) => s.name === "parachute-vault")).toEqual(vault);
-      expect(m.services.find((s) => s.name === "parachute-notes")).toEqual(notes);
+      expect(m.services.find((s) => s.name === "parachute-lens")).toEqual(lens);
     } finally {
       cleanup();
     }
@@ -86,9 +86,9 @@ describe("services-manifest", () => {
   it("upsertService writes pretty-printed JSON with trailing newline", () => {
     const { path, cleanup } = tempPath();
     try {
-      upsertService(notes, path);
+      upsertService(lens, path);
       const raw = readFileSync(path, "utf8");
-      expect(raw).toBe(`${JSON.stringify({ services: [notes] }, null, 2)}\n`);
+      expect(raw).toBe(`${JSON.stringify({ services: [lens] }, null, 2)}\n`);
     } finally {
       cleanup();
     }
@@ -108,7 +108,7 @@ describe("services-manifest", () => {
     const { path, cleanup } = tempPath();
     try {
       writeFileSync(path, `${JSON.stringify({ services: [vault] }, null, 2)}\n`);
-      const bad = { ...notes, port: -1 };
+      const bad = { ...lens, port: -1 };
       expect(() => upsertService(bad as ServiceEntry, path)).toThrow(ServicesManifestError);
       expect(readManifest(path)).toEqual({ services: [vault] });
     } finally {
@@ -131,9 +131,9 @@ describe("services-manifest", () => {
   it("rejects non-string displayName / tagline", () => {
     const { path, cleanup } = tempPath();
     try {
-      const badDisplay = { ...notes, displayName: 42 } as unknown as ServiceEntry;
+      const badDisplay = { ...lens, displayName: 42 } as unknown as ServiceEntry;
       expect(() => upsertService(badDisplay, path)).toThrow(/displayName/);
-      const badTagline = { ...notes, tagline: 42 } as unknown as ServiceEntry;
+      const badTagline = { ...lens, tagline: 42 } as unknown as ServiceEntry;
       expect(() => upsertService(badTagline, path)).toThrow(/tagline/);
     } finally {
       cleanup();
@@ -141,13 +141,13 @@ describe("services-manifest", () => {
   });
 
   it("default path honors PARACHUTE_HOME set at runtime", () => {
-    const dir = mkdtempSync(join(tmpdir(), "pnotes-home-"));
+    const dir = mkdtempSync(join(tmpdir(), "plens-home-"));
     const prior = process.env.PARACHUTE_HOME;
     process.env.PARACHUTE_HOME = dir;
     try {
       expect(servicesManifestPath()).toBe(join(dir, "services.json"));
-      upsertService(notes);
-      expect(readManifest()).toEqual({ services: [notes] });
+      upsertService(lens);
+      expect(readManifest()).toEqual({ services: [lens] });
     } finally {
       // biome-ignore lint/performance/noDelete: process.env coerces assignments to strings; only delete actually unsets the key
       if (prior === undefined) delete process.env.PARACHUTE_HOME;

@@ -40,7 +40,7 @@ export function Header() {
     >
       <nav className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-6 py-4 md:py-5">
         <Link to="/" className="font-serif text-xl tracking-tight text-fg hover:text-accent">
-          Parachute Notes
+          Parachute Lens
         </Link>
 
         {/* Desktop nav */}

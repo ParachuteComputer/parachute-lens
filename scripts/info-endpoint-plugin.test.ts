@@ -2,26 +2,26 @@ import { describe, expect, it } from "vitest";
 import { type ServiceInfo, buildServiceInfo, infoEndpointPlugin } from "./info-endpoint-plugin";
 
 const exampleInfo: ServiceInfo = {
-  name: "parachute-notes",
-  displayName: "Notes",
+  name: "parachute-lens",
+  displayName: "Lens",
   tagline: "Web client for your Parachute Vault",
   version: "0.0.1",
-  iconUrl: "/notes/icon.svg",
+  iconUrl: "/lens/icon.svg",
   kind: "frontend",
 };
 
 describe("buildServiceInfo", () => {
   it("threads basePath into iconUrl and carries kind through", () => {
     const info = buildServiceInfo({
-      name: "parachute-notes",
-      displayName: "Notes",
+      name: "parachute-lens",
+      displayName: "Lens",
       tagline: "Web client for your Parachute Vault",
       version: "0.0.1",
-      basePath: "/notes",
+      basePath: "/lens",
       iconFile: "icon.svg",
       kind: "frontend",
     });
-    expect(info.iconUrl).toBe("/notes/icon.svg");
+    expect(info.iconUrl).toBe("/lens/icon.svg");
     expect(info.kind).toBe("frontend");
   });
 
@@ -31,11 +31,11 @@ describe("buildServiceInfo", () => {
       displayName: "X",
       tagline: "t",
       version: "1",
-      basePath: "/notes/",
+      basePath: "/lens/",
       iconFile: "/icon.svg",
       kind: "frontend",
     });
-    expect(info.iconUrl).toBe("/notes/icon.svg");
+    expect(info.iconUrl).toBe("/lens/icon.svg");
   });
 
   it("accepts alternate kinds for non-frontend services", () => {
@@ -54,7 +54,7 @@ describe("buildServiceInfo", () => {
 
 describe("infoEndpointPlugin", () => {
   it("emits .parachute/info.json into the bundle on build", () => {
-    const plugin = infoEndpointPlugin({ basePath: "/notes", ...exampleInfo });
+    const plugin = infoEndpointPlugin({ basePath: "/lens", ...exampleInfo });
     const emitted: Array<{ type: string; fileName?: string; source?: string | Uint8Array }> = [];
     const ctx = {
       emitFile(file: { type: string; fileName?: string; source?: string | Uint8Array }) {
@@ -78,7 +78,7 @@ describe("infoEndpointPlugin", () => {
   });
 
   it("serves the same JSON via dev server middleware at basePath/.parachute/info.json", () => {
-    const plugin = infoEndpointPlugin({ basePath: "/notes", ...exampleInfo });
+    const plugin = infoEndpointPlugin({ basePath: "/lens", ...exampleInfo });
     const uses: Array<{ path: string; handler: (req: unknown, res: MockRes) => void }> = [];
     const fakeServer = {
       middlewares: {
@@ -94,7 +94,7 @@ describe("infoEndpointPlugin", () => {
     configure.call(plugin as any, fakeServer as any);
 
     expect(uses).toHaveLength(1);
-    expect(uses[0]?.path).toBe("/notes/.parachute/info.json");
+    expect(uses[0]?.path).toBe("/lens/.parachute/info.json");
 
     const res = new MockRes();
     uses[0]?.handler({}, res);
