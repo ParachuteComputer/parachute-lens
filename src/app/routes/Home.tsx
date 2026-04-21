@@ -14,7 +14,7 @@ export function Home() {
       <p className="mb-8 font-serif text-xl italic text-fg-muted">
         The default frontend for Parachute.
       </p>
-      <h1 className="mb-4 font-serif text-5xl tracking-tight">Notes</h1>
+      <h1 className="mb-4 font-serif text-5xl tracking-tight">Lens</h1>
 
       {/* Hold back the CTA while probing so we don't flash "Connect a vault"
           and then swap it for "Looks like there's a vault at ..." once the

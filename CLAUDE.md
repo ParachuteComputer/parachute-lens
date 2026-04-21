@@ -1,14 +1,14 @@
-# parachute-notes (repo dir still named `parachute-lens`)
+# parachute-lens
 
-A browser-based companion for any Parachute Vault. Vite + React + TypeScript, installable PWA, served at `/notes/` under the ecosystem origin. OAuth 2.1 + PKCE + RFC 7591 DCR against the vault (discovery now probes hub-origin per PR #55).
+A browser-based companion for any Parachute Vault. Vite + React + TypeScript, installable PWA, served at `/lens/` under the ecosystem origin. OAuth 2.1 + PKCE + RFC 7591 DCR against the vault (discovery now probes hub-origin per PR #55).
 
 ## Mount-path architecture
 
-Notes lives at `/notes/` externally and uses mount-relative internal routes.
+Lens lives at `/lens/` externally and uses mount-relative internal routes.
 
-- **Vite `base`** = `/notes/` — asset URLs, PWA manifest scope, service worker
-- **BrowserRouter `basename`** = `/notes` (from `import.meta.env.BASE_URL`)
-- **Internal routes** — `/`, `/:id`, `/:id/edit`, `/pinned`, `/tags`, `/new`, `/add` — no `/notes/` prefix. React Router v7 ranked routing picks static routes over `/:id` correctly.
+- **Vite `base`** = `/lens/` — asset URLs, PWA manifest scope, service worker
+- **BrowserRouter `basename`** = `/lens` (from `import.meta.env.BASE_URL`)
+- **Internal routes** — `/`, `/:id`, `/:id/edit`, `/pinned`, `/tags`, `/new`, `/add` — no `/lens/` prefix. React Router v7 ranked routing picks static routes over `/:id` correctly.
 - **OAuth redirect URI** — `BASE_URL + "oauth/callback"` via `basePathPrefix()` in `src/lib/vault/oauth.ts`
 - **Deep-link shim** — `/:id` + `/:id/edit` redirect to the right internal routes (PR #54) for pre-refactor bookmarks
 
@@ -78,4 +78,4 @@ When a PR is merged, locally:
 git checkout main && git pull
 ```
 
-Aaron runs notes via `bun link` + `parachute start notes` in development — the linked install follows whatever branch is checked out. Leaving the repo on a feature branch after merge means Aaron's running stale feature-branch code, not the merged main. Caught 2026-04-21.
+Aaron runs lens via `bun link` + `parachute start lens` in development — the linked install follows whatever branch is checked out. Leaving the repo on a feature branch after merge means Aaron's running stale feature-branch code, not the merged main. Caught 2026-04-21.

@@ -6,8 +6,8 @@ import { normalizeVaultUrl } from "./url";
 
 const REDIRECT_PATH = "/oauth/callback";
 
-// Notes is mounted under `import.meta.env.BASE_URL` (defaults to `/`, can be
-// `/notes/` when the CLI's expose tooling path-routes us). The OAuth callback
+// Lens is mounted under `import.meta.env.BASE_URL` (defaults to `/`, can be
+// `/lens/` when the CLI's expose tooling path-routes us). The OAuth callback
 // must include that prefix so the authorization server bounces the browser
 // back to a URL the SPA actually serves.
 function basePathPrefix(): string {

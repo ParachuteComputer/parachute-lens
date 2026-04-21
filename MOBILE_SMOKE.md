@@ -1,18 +1,18 @@
 # Mobile smoke — PWA install + voice memo + offline
 
-Test Notes as a PWA on a real phone. Android first (you have one), iPhone handed off to Jon.
+Test Lens as a PWA on a real phone. Android first (you have one), iPhone handed off to Jon.
 
-Prereq: tailnet chain is up (`parachute expose tailnet` on your Mac, hub + notes + vault + scribe all running), phone is on your tailnet.
+Prereq: tailnet chain is up (`parachute expose tailnet` on your Mac, hub + lens + vault + scribe all running), phone is on your tailnet.
 
 ## Android (Chrome)
 
 ### 1. Load + install
 
-- [ ] Open Chrome, go to `https://parachute.<tailnet>.ts.net/notes/`
+- [ ] Open Chrome, go to `https://parachute.<tailnet>.ts.net/lens/`
 - [ ] Page loads, renders notes UI (header, sidebar, list)
-- [ ] Chrome's "Install Parachute Notes" prompt appears in the address bar or menu
+- [ ] Chrome's "Install Parachute Lens" prompt appears in the address bar or menu
 - [ ] Tap "Install", confirm
-- [ ] Home-screen icon appears, labeled "Parachute Notes"
+- [ ] Home-screen icon appears, labeled "Parachute Lens"
 - [ ] Tap the home-screen icon → app opens fullscreen (no browser chrome)
 
 ### 2. OAuth (if not already connected)

@@ -1,13 +1,13 @@
 {
-  "name": "@openparachute/notes",
+  "name": "@openparachute/lens",
   "version": "0.3.0-rc.1",
   "private": false,
   "type": "module",
-  "description": "Parachute Notes — the default frontend for Parachute. Browse, edit, and capture in any Parachute Vault.",
+  "description": "Parachute Lens — the default frontend for Parachute. Browse, edit, and capture in any Parachute Vault.",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ParachuteComputer/parachute-notes.git"
+    "url": "https://github.com/ParachuteComputer/parachute-lens.git"
   },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {

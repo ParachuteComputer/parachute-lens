@@ -15,9 +15,9 @@ describe("App", () => {
     localStorage.clear();
     sessionStorage.clear();
     useVaultStore.setState({ vaults: {}, activeVaultId: null });
-    // BrowserRouter is mounted with basename="/notes" (BASE_URL from Vite).
-    // Tests simulate the external mount by placing the browser under /notes/.
-    window.history.replaceState({}, "", "/notes/");
+    // BrowserRouter is mounted with basename="/lens" (BASE_URL from Vite).
+    // Tests simulate the external mount by placing the browser under /lens/.
+    window.history.replaceState({}, "", "/lens/");
     stubFetch();
   });
 
@@ -26,9 +26,9 @@ describe("App", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the Parachute Notes wordmark and the connect CTA when no vaults exist", async () => {
+  it("renders the Parachute Lens wordmark and the connect CTA when no vaults exist", async () => {
     render(<App />);
-    expect(screen.getByRole("link", { name: /parachute notes/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /parachute lens/i })).toBeInTheDocument();
     // Home holds back the CTA until the origin probe settles to avoid
     // flashing "Connect a vault" before swapping to "Looks like there's a
     // vault at …". Wait for the probe to resolve before asserting the CTA.
@@ -38,34 +38,34 @@ describe("App", () => {
     expect(screen.getByText(/no vault connected/i)).toBeInTheDocument();
   });
 
-  it("resolves the root list view at external /notes/ without double-prefixing", () => {
+  it("resolves the root list view at external /lens/ without double-prefixing", () => {
     render(<App />);
-    // Regression guard against the /notes/notes bug: with basename="/notes"
+    // Regression guard against the /lens/lens bug: with basename="/lens"
     // stripping the external prefix, the internal path is "/" and the index
-    // dispatcher (Home for no vault) renders. The URL must stay /notes/, not
-    // become /notes/notes.
-    expect(screen.getByRole("link", { name: /parachute notes/i })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/notes/");
+    // dispatcher (Home for no vault) renders. The URL must stay /lens/, not
+    // become /lens/lens.
+    expect(screen.getByRole("link", { name: /parachute lens/i })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/lens/");
   });
 
-  it("resolves NoteView at external /notes/n/<id>", () => {
-    window.history.replaceState({}, "", "/notes/n/some-id");
+  it("resolves NoteView at external /lens/n/<id>", () => {
+    window.history.replaceState({}, "", "/lens/n/some-id");
     render(<App />);
     // With no vault the NoteView route redirects internally to "/" (basename
-    // strips /notes). The critical regression guard: the external URL must
-    // sit under /notes, never /notes/notes.
-    expect(window.location.pathname.startsWith("/notes")).toBe(true);
-    expect(window.location.pathname.startsWith("/notes/notes")).toBe(false);
+    // strips /lens). The critical regression guard: the external URL must
+    // sit under /lens, never /lens/lens.
+    expect(window.location.pathname.startsWith("/lens")).toBe(true);
+    expect(window.location.pathname.startsWith("/lens/lens")).toBe(false);
   });
 
-  it("catch-all redirects to the root list, not /notes/notes", () => {
-    window.history.replaceState({}, "", "/notes/some-unknown-internal-path");
+  it("catch-all redirects to the root list, not /lens/lens", () => {
+    window.history.replaceState({}, "", "/lens/some-unknown-internal-path");
     render(<App />);
-    // The `*` route navigates to internal `/`. With basename=/notes this is
-    // external /notes (with or without trailing slash — both resolve the root
-    // list). The bug Aaron hit (/notes/notes) would surface here if basename
+    // The `*` route navigates to internal `/`. With basename=/lens this is
+    // external /lens (with or without trailing slash — both resolve the root
+    // list). The bug Aaron hit (/lens/lens) would surface here if basename
     // and route paths disagreed.
-    expect(window.location.pathname).toMatch(/^\/notes\/?$/);
+    expect(window.location.pathname).toMatch(/^\/lens\/?$/);
   });
 
   it("static route /settings wins over the dynamic /:id deep-link shim", () => {
@@ -84,13 +84,13 @@ describe("App", () => {
       },
       activeVaultId: "v1",
     });
-    window.history.replaceState({}, "", "/notes/settings");
+    window.history.replaceState({}, "", "/lens/settings");
     render(<App />);
     // Regression guard against future route-table accidents: RR7's ranked
     // routing must hold `/settings` (and every other named static route)
     // above the `/:id` pre-#49 bookmark shim. If this ever fails, the shim
     // would start swallowing real internal pages.
     expect(screen.getByRole("heading", { level: 1, name: /settings/i })).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/notes/settings");
+    expect(window.location.pathname).toBe("/lens/settings");
   });
 });

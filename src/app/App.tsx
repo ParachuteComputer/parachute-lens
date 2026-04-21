@@ -23,7 +23,7 @@ import { VaultGraph } from "./routes/VaultGraph";
 import { Vaults } from "./routes/Vaults";
 
 // Index dispatcher: render the notes list when a vault is connected, else the
-// landing page. Both live at internal `/`, which maps to external `/notes/`
+// landing page. Both live at internal `/`, which maps to external `/lens/`
 // via BrowserRouter's basename. Keeps Notes free of "no vault?" presentation
 // concerns and Home free of any redirect logic.
 function NotesIndex() {
@@ -31,11 +31,11 @@ function NotesIndex() {
   return activeVault ? <Notes /> : <Home />;
 }
 
-// Shim for pre-#49 external bookmarks. When Notes lived at the origin root,
-// links were `/notes/<id>` and `/notes/<id>/edit`. After #49 moved Notes
-// under `/notes/`, Tailscale strips that prefix, leaving internal `/<id>`
-// and `/<id>/edit` — which the catch-all would otherwise bounce to `/`.
-// Redirect them to the canonical `/n/<id>` routes so old bookmarks survive.
+// Shim for pre-mount external bookmarks. When the app lived at the origin root,
+// links were `/<id>` and `/<id>/edit`. After Lens moved under `/lens/`,
+// Tailscale strips that prefix, leaving internal `/<id>` and `/<id>/edit` —
+// which the catch-all would otherwise bounce to `/`. Redirect them to the
+// canonical `/n/<id>` routes so old bookmarks survive.
 function NoteIdRedirect({ suffix = "" }: { suffix?: string }) {
   const { id } = useParams<{ id: string }>();
   if (!id) return <Navigate to="/" replace />;
