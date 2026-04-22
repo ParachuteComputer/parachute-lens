@@ -579,7 +579,7 @@ function NoteRow({
                   ★
                 </span>
               ) : null}
-              <span className="truncate font-mono text-sm text-fg">{label}</span>
+              <span className="min-w-0 truncate font-mono text-sm text-fg">{label}</span>
             </span>
             <span className="shrink-0 text-xs text-fg-dim">{relativeTime(stamp)}</span>
           </div>
@@ -588,7 +588,7 @@ function NoteRow({
               {note.tags.map((t) => (
                 <span
                   key={t}
-                  className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs text-accent"
+                  className="max-w-full break-all rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs text-accent"
                 >
                   #{t}
                 </span>
@@ -754,12 +754,12 @@ function PinnedTagsStrip({
             onClick={() => onPick(name)}
             className={
               active
-                ? "inline-flex items-center gap-1 rounded-full border border-accent bg-accent px-2.5 py-1 text-xs font-medium text-white"
-                : "inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs text-accent hover:border-accent hover:bg-accent/20"
+                ? "inline-flex max-w-full items-center gap-1 rounded-full border border-accent bg-accent px-2.5 py-1 text-xs font-medium text-white"
+                : "inline-flex max-w-full items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs text-accent hover:border-accent hover:bg-accent/20"
             }
             aria-pressed={active}
           >
-            <span>#{name}</span>
+            <span className="min-w-0 break-all">#{name}</span>
             {count !== undefined ? (
               <span className={active ? "text-white/80" : "text-accent/70"}>{count}</span>
             ) : null}
