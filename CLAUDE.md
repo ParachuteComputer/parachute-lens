@@ -1,14 +1,16 @@
-# parachute-lens
+# parachute-notes
 
-A browser-based companion for any Parachute Vault. Vite + React + TypeScript, installable PWA, served at `/lens/` under the ecosystem origin. OAuth 2.1 + PKCE + RFC 7591 DCR against the vault (discovery now probes hub-origin per PR #55).
+A browser-based companion for any Parachute Vault. Vite + React + TypeScript, installable PWA, served at `/notes/` under the ecosystem origin. OAuth 2.1 + PKCE + RFC 7591 DCR against the vault (discovery now probes hub-origin per PR #55).
+
+> **Naming history.** The package and mount path were briefly renamed `lens` / `/lens/` in rc.1 before the team reverted to "Notes" on 2026-04-22 ahead of launch. Internal identifiers that hold user data across that rename are preserved intentionally: the IndexedDB name stays `parachute-lens`, the `lens:*` localStorage key prefix stays, and the settings note is read from its legacy path once on 404 fallback. See PR #74 for the full revert.
 
 ## Mount-path architecture
 
-Lens lives at `/lens/` externally and uses mount-relative internal routes.
+Notes lives at `/notes/` externally and uses mount-relative internal routes.
 
-- **Vite `base`** = `/lens/` — asset URLs, PWA manifest scope, service worker
-- **BrowserRouter `basename`** = `/lens` (from `import.meta.env.BASE_URL`)
-- **Internal routes** — `/`, `/:id`, `/:id/edit`, `/pinned`, `/tags`, `/new`, `/add` — no `/lens/` prefix. React Router v7 ranked routing picks static routes over `/:id` correctly.
+- **Vite `base`** = `/notes/` — asset URLs, PWA manifest scope, service worker
+- **BrowserRouter `basename`** = `/notes` (from `import.meta.env.BASE_URL`)
+- **Internal routes** — `/`, `/:id`, `/:id/edit`, `/pinned`, `/tags`, `/new`, `/add` — no `/notes/` prefix. React Router v7 ranked routing picks static routes over `/:id` correctly.
 - **OAuth redirect URI** — `BASE_URL + "oauth/callback"` via `basePathPrefix()` in `src/lib/vault/oauth.ts`
 - **Deep-link shim** — `/:id` + `/:id/edit` redirect to the right internal routes (PR #54) for pre-refactor bookmarks
 
@@ -27,7 +29,9 @@ Instead, add the tag to the `TagRoles` object and read it at the point of use.
 
 - Type + helpers: `src/lib/vault/tag-roles.ts`
 - Settings UI: `TagRolesSection` in `src/app/routes/Settings.tsx`
-- Storage key: `lens:tag-roles:<vaultId>` in `localStorage` (per-vault)
+- Vault storage: `.parachute/notes/settings` note, `metadata.notes` sub-object
+  (legacy reads at `.parachute/lens/settings` / `metadata.lens` fall through
+  once, then get rewritten at the new path on next change)
 
 ### Current roles
 
@@ -55,25 +59,18 @@ Instead, add the tag to the `TagRoles` object and read it at the point of use.
 
 ### Pattern: per-vault UI/integration settings in general
 
-Other per-vault settings follow the same shape:
+Other per-vault settings follow the same shape via the `useVaultSettings` hook,
+which stores a single JSON blob inside the `.parachute/notes/settings` note
+and merges-on-409 across devices. Reach for it (not a new store pattern) when
+you need "a small JSON blob that belongs to a single vault and rarely
+changes."
 
-- Plain `load<Feature>(vaultId)` / `save<Feature>(vaultId, x)` /
-  `delete<Feature>(vaultId)` around `localStorage` with a key of
-  `lens:<feature>:<vaultId>`.
-- A thin `use<Feature>(vaultId)` hook that re-reads on `vaultId` change and
-  returns `{ value, setValue }`.
-- No zustand for these — localStorage is the source of truth and the hook is
-  just a convenience.
+## Transcription is vault-level, not Notes-level
 
-Reach for this primitive (not a new store pattern) when you need "a small
-JSON blob that belongs to a single vault and rarely changes."
-
-## Transcription is vault-level, not Lens-level
-
-Lens uploads audio attachments. When the attachment POST body carries
+Notes uploads audio attachments. When the attachment POST body carries
 `{ transcribe: true }`, the vault's transcription-worker picks the job up
 and (if scribe is wired) overwrites the note's `_Transcript pending._`
-placeholder with the actual transcript. Lens has no scribe client, no
+placeholder with the actual transcript. Notes has no scribe client, no
 scribe settings UI, and no direct knowledge of whether transcription is
 configured — that's the vault's concern. If a user wants voice memos with
 transcripts, they configure scribe in the vault once, not per-device.
@@ -86,4 +83,4 @@ When a PR is merged, locally:
 git checkout main && git pull
 ```
 
-Aaron runs lens via `bun link` + `parachute start lens` in development — the linked install follows whatever branch is checked out. Leaving the repo on a feature branch after merge means Aaron's running stale feature-branch code, not the merged main. Caught 2026-04-21.
+Aaron runs Notes via `bun link` + `parachute start notes` in development — the linked install follows whatever branch is checked out. Leaving the repo on a feature branch after merge means Aaron's running stale feature-branch code, not the merged main. Caught 2026-04-21.

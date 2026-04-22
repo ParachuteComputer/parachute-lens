@@ -1,4 +1,4 @@
-// Single-purpose chip for voice-memo notes. Lens seeds the note with
+// Single-purpose chip for voice-memo notes. Notes seeds the draft with
 // `_Transcript pending._` at capture time (see `memoNoteContent()` in
 // `src/lib/capture/recorder.ts`); vault's transcription-worker swaps it
 // for either the transcript or `_Transcription unavailable._` when it

@@ -5,20 +5,20 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { buildServiceInfo, infoEndpointPlugin } from "./scripts/info-endpoint-plugin";
-import { lensServicePlugin } from "./scripts/lens-service-plugin";
+import { notesServicePlugin } from "./scripts/notes-service-plugin";
 import { buildPwaManifest } from "./src/pwa-manifest";
 
 // Set VITE_EXPOSE=true to bind the dev server to all interfaces and accept any
 // Host header — useful when reaching the dev server over a tailnet. Off by default.
 const devExposure = process.env.VITE_EXPOSE === "true";
 
-// Lens is one of N frontends mounted under a shared root: the CLI hub page
-// owns `/`, and each frontend lives under its own slug. Default to `/lens`
-// here so dev, build, and `parachute start lens` all agree.
+// Notes is one of N frontends mounted under a shared root: the CLI hub page
+// owns `/`, and each frontend lives under its own slug. Default to `/notes`
+// here so dev, build, and `parachute start notes` all agree.
 // Override with VITE_BASE_PATH=/ if you want the legacy stand-alone shape.
-const basePath = normalizeBase(process.env.VITE_BASE_PATH ?? "/lens");
+const basePath = normalizeBase(process.env.VITE_BASE_PATH ?? "/notes");
 
-const DISPLAY_NAME = "Lens";
+const DISPLAY_NAME = "Notes";
 const TAGLINE = "Web client for your Parachute Vault";
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "./package.json"), "utf8")) as {
@@ -26,14 +26,14 @@ const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "./package.json"), "
 };
 
 const serviceInfo = buildServiceInfo({
-  name: "parachute-lens",
+  name: "parachute-notes",
   displayName: DISPLAY_NAME,
   tagline: TAGLINE,
   version: pkg.version,
   basePath,
   iconFile: "icon.svg",
-  // Lens has a real UI — the hub should render it as a clickable card that
-  // navigates into `/lens/`, not a detail panel.
+  // Notes has a real UI — the hub should render it as a clickable card that
+  // navigates into `/notes/`, not a detail panel.
   kind: "frontend",
 });
 
@@ -48,8 +48,8 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    lensServicePlugin({
-      name: "parachute-lens",
+    notesServicePlugin({
+      name: "parachute-notes",
       version: pkg.version,
       basePath,
       displayName: DISPLAY_NAME,
@@ -85,9 +85,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  // Lens' canonical Parachute slot is 1942 (vault is 1940; the 1939–1949
+  // Notes' canonical Parachute slot is 1942 (vault is 1940; the 1939–1949
   // range is reserved for first-party services). Pin it so the manifest
-  // write in `lens-service-plugin.ts` advertises a stable port — Vite's
+  // write in `notes-service-plugin.ts` advertises a stable port — Vite's
   // 5173 default would otherwise drift if anything else grabs that port.
   server: {
     port: 1942,

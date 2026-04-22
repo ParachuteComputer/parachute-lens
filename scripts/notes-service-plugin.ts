@@ -15,7 +15,7 @@ interface PluginOptions {
   tagline?: string;
 }
 
-// Lens is an SPA — no long-running Node entrypoint that would otherwise own
+// Notes is an SPA — no long-running Node entrypoint that would otherwise own
 // the manifest write. Hook the Vite dev + preview servers instead so the
 // manifest reflects the actual listening port. We deliberately do NOT write
 // during `vite build` (no port to advertise; the CLI's expose tool registers
@@ -23,7 +23,7 @@ interface PluginOptions {
 //
 // Best-effort: a manifest write failure (PARACHUTE_HOME unwritable, schema
 // drift, malformed pre-existing file) only logs a warning. Don't break dev.
-export function lensServicePlugin(options: PluginOptions): Plugin {
+export function notesServicePlugin(options: PluginOptions): Plugin {
   const { name, version, basePath, displayName, tagline } = options;
   const healthPath = basePath.endsWith("/") ? basePath : `${basePath}/`;
 
@@ -54,7 +54,7 @@ export function lensServicePlugin(options: PluginOptions): Plugin {
   }
 
   return {
-    name: "parachute-lens-service-manifest",
+    name: "parachute-notes-service-manifest",
     apply: (_config, env) => env.command === "serve",
     configureServer: attach,
     configurePreviewServer: attach,

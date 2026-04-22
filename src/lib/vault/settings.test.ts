@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_LENS_SETTINGS,
+  LEGACY_SETTINGS_NOTE_PATH,
   SETTINGS_NOTE_PATH,
   SETTINGS_SCHEMA_VERSION,
   type SettingsCacheEntry,
@@ -19,7 +20,13 @@ describe("settings note path is stable", () => {
   it("pins the vault path so concurrent devices agree", () => {
     // Changing this would make already-deployed installs lose their settings.
     // Bump schemaVersion and migrate instead if the shape needs to change.
-    expect(SETTINGS_NOTE_PATH).toBe(".parachute/lens/settings");
+    expect(SETTINGS_NOTE_PATH).toBe(".parachute/notes/settings");
+  });
+
+  it("remembers the prior Lens-branded path for read-only fallback", () => {
+    // Aaron's running machine (and anyone who ran the brief Lens-branded
+    // window) has settings under the legacy path. We read but never write it.
+    expect(LEGACY_SETTINGS_NOTE_PATH).toBe(".parachute/lens/settings");
   });
 });
 
@@ -62,7 +69,7 @@ describe("extractLensSettings", () => {
     expect(extractLensSettings(note)).toEqual(DEFAULT_LENS_SETTINGS);
   });
 
-  it("returns defaults when metadata.lens is missing", () => {
+  it("returns defaults when the notes/lens sub-object is missing", () => {
     const note: Note = {
       id: "n1",
       createdAt: "2026-04-22T00:00:00Z",
@@ -71,12 +78,12 @@ describe("extractLensSettings", () => {
     expect(extractLensSettings(note)).toEqual(DEFAULT_LENS_SETTINGS);
   });
 
-  it("reads the lens sub-object from metadata", () => {
+  it("reads the notes sub-object from metadata", () => {
     const note: Note = {
       id: "n1",
       createdAt: "2026-04-22T00:00:00Z",
       metadata: {
-        lens: {
+        notes: {
           schemaVersion: 1,
           tagRoles: { pinned: "favs", archived: "done" },
         },
@@ -86,6 +93,35 @@ describe("extractLensSettings", () => {
     expect(out.tagRoles.pinned).toBe("favs");
     expect(out.tagRoles.archived).toBe("done");
     expect(out.tagRoles.captureVoice).toBe(DEFAULT_TAG_ROLES.captureVoice);
+  });
+
+  it("falls back to the legacy `lens` key when `notes` is absent", () => {
+    // A settings note written under the prior Lens-branded release stores the
+    // payload at `metadata.lens`. Read-through keeps existing installs working
+    // until the next write, which will re-key under `notes`.
+    const note: Note = {
+      id: "n1",
+      createdAt: "2026-04-22T00:00:00Z",
+      metadata: {
+        lens: {
+          schemaVersion: 1,
+          tagRoles: { pinned: "legacy-fav" },
+        },
+      },
+    };
+    expect(extractLensSettings(note).tagRoles.pinned).toBe("legacy-fav");
+  });
+
+  it("prefers `notes` over `lens` when both are present", () => {
+    const note: Note = {
+      id: "n1",
+      createdAt: "2026-04-22T00:00:00Z",
+      metadata: {
+        lens: { schemaVersion: 1, tagRoles: { pinned: "old" } },
+        notes: { schemaVersion: 1, tagRoles: { pinned: "new" } },
+      },
+    };
+    expect(extractLensSettings(note).tagRoles.pinned).toBe("new");
   });
 });
 
@@ -248,7 +284,7 @@ describe("concurrent-write invariant (merge-on-409)", () => {
       createdAt: "2026-04-22T09:00:00Z",
       updatedAt: "2026-04-22T10:30:00Z",
       metadata: {
-        lens: {
+        notes: {
           schemaVersion: 1,
           tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "A-pinned" },
         },

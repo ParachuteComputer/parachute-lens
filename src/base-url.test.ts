@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 // strips the external prefix on read and prepends it on write. Moving the
 // mount is a one-line change here — not a route-by-route search-and-replace.
 describe("import.meta.env.BASE_URL", () => {
-  it("defaults to /lens/ — Lens is mounted under /lens by the hub", () => {
-    expect(import.meta.env.BASE_URL).toBe("/lens/");
+  it("defaults to /notes/ — Notes is mounted under /notes by the hub", () => {
+    expect(import.meta.env.BASE_URL).toBe("/notes/");
   });
 });

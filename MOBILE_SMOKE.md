@@ -1,23 +1,23 @@
 # Mobile smoke — PWA install + voice memo + offline
 
-Test Lens as a PWA on a real phone. Android first (you have one), iPhone handed off to Jon.
+Test Notes as a PWA on a real phone. Android first (you have one), iPhone handed off to Jon.
 
-Prereq: tailnet chain is up (`parachute expose tailnet` on your Mac, hub + lens + vault + scribe all running), phone is on your tailnet.
+Prereq: tailnet chain is up (`parachute expose tailnet` on your Mac, hub + notes + vault + scribe all running), phone is on your tailnet.
 
 ## Android (Chrome)
 
 ### 1. Load + install
 
-- [ ] Open Chrome, go to `https://parachute.<tailnet>.ts.net/lens/`
+- [ ] Open Chrome, go to `https://parachute.<tailnet>.ts.net/notes/`
 - [ ] Page loads, renders notes UI (header, sidebar, list)
-- [ ] Chrome's "Install Parachute Lens" prompt appears in the address bar or menu
+- [ ] Chrome's "Install Parachute Notes" prompt appears in the address bar or menu
 - [ ] Tap "Install", confirm
-- [ ] Home-screen icon appears, labeled "Parachute Lens"
+- [ ] Home-screen icon appears, labeled "Parachute Notes"
 - [ ] Tap the home-screen icon → app opens fullscreen (no browser chrome)
 
 ### 2. OAuth (if not already connected)
 
-- [ ] "Add vault" screen appears (or "Connect" — whichever route lens has)
+- [ ] "Add vault" screen appears (or "Connect" — whichever route Notes has)
 - [ ] Paste vault URL: `https://parachute.<tailnet>.ts.net/vault/default/`
 - [ ] Consent screen shows
 - [ ] Password (+ 2FA if configured) succeeds
@@ -49,7 +49,7 @@ Prereq: tailnet chain is up (`parachute expose tailnet` on your Mac, hub + lens 
 - [ ] Tap-and-hold record button, say "testing voice memo one two three"
 - [ ] Release → progress indicator shows "uploading"
 - [ ] Note appears with audio attachment
-- [ ] If the vault has scribe configured, transcript replaces `_Transcript pending._` in the note within ~10s (transcription is vault-level — Lens just flags `transcribe: true` on the attachment)
+- [ ] If the vault has scribe configured, transcript replaces `_Transcript pending._` in the note within ~10s (transcription is vault-level — Notes just flags `transcribe: true` on the attachment)
 
 ### 6. Offline
 
@@ -102,6 +102,6 @@ Same steps as Android, with iOS-specific checks:
 - Install prompt never appears → manifest.json or service worker issue. Open DevTools → Application tab → Manifest, Service Workers.
 - OAuth fails → check `/.well-known/oauth-authorization-server` resolves, check mixed-content (HTTPS required for PKCE).
 - Voice memo records but upload fails → check CORS on vault, network tab for actual request.
-- Transcript never appears → scribe not wired on the vault side (Lens just flags `transcribe: true` on the attachment; the vault's transcription-worker is what invokes scribe). Check the vault's `SCRIBE_URL` / scribe config.
+- Transcript never appears → scribe not wired on the vault side (Notes just flags `transcribe: true` on the attachment; the vault's transcription-worker is what invokes scribe). Check the vault's `SCRIBE_URL` / scribe config.
 
 Report outcomes as a checklist back in this file or as a GitHub issue, with device + OS version.

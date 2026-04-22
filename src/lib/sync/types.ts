@@ -67,7 +67,7 @@ export interface PendingLinkAttachment {
   mimeType: string;
   // When true, ask the vault to transcribe this attachment and overwrite the
   // note's `_Transcript pending._` placeholder with the transcript. Vault's
-  // transcription-worker does the actual work — Lens just flags intent.
+  // transcription-worker does the actual work — Notes just flags intent.
   transcribe?: boolean;
 }
 

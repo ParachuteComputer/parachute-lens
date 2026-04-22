@@ -459,7 +459,7 @@ describe("drain — update-settings (merge-on-409 invariant)", () => {
   });
   afterEach(() => db.close());
 
-  const settingsPath = ".parachute/lens/settings";
+  const settingsPath = ".parachute/notes/settings";
 
   it("POSTs when the settings note doesn't exist", async () => {
     const createNote = vi.fn(async () => ({ id: "srv", createdAt: "t1" }) as Note);
@@ -483,10 +483,10 @@ describe("drain — update-settings (merge-on-409 invariant)", () => {
     expect(createNote).toHaveBeenCalledOnce();
     const arg = (createNote.mock.calls as unknown as unknown[][])[0]?.[0] as {
       path: string;
-      metadata: { lens: { tagRoles: { pinned: string } } };
+      metadata: { notes: { tagRoles: { pinned: string } } };
     };
     expect(arg.path).toBe(settingsPath);
-    expect(arg.metadata.lens.tagRoles.pinned).toBe("fav");
+    expect(arg.metadata.notes.tagRoles.pinned).toBe("fav");
   });
 
   it("merges the patch onto the refetched server state, preserving a concurrent peer's write", async () => {
@@ -538,10 +538,10 @@ describe("drain — update-settings (merge-on-409 invariant)", () => {
     expect(updateNote).toHaveBeenCalledOnce();
     const call = updateNote.mock.calls[0] as unknown as [
       string,
-      { metadata: { lens: { tagRoles: Record<string, string> } }; if_updated_at?: string },
+      { metadata: { notes: { tagRoles: Record<string, string> } }; if_updated_at?: string },
     ];
-    expect(call[1].metadata.lens.tagRoles.pinned).toBe("A-pinned");
-    expect(call[1].metadata.lens.tagRoles.archived).toBe("B-archived");
+    expect(call[1].metadata.notes.tagRoles.pinned).toBe("A-pinned");
+    expect(call[1].metadata.notes.tagRoles.archived).toBe("B-archived");
     expect(call[1].if_updated_at).toBe("t1");
   });
 

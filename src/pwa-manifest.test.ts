@@ -34,14 +34,14 @@ describe("PWA_MANIFEST", () => {
 
 describe("buildPwaManifest under a sub-path", () => {
   it("threads the base into id, start_url, and scope so installed PWAs land on the right route", () => {
-    const m = buildPwaManifest("/lens/");
-    expect(m.id).toBe("/lens/");
-    expect(m.start_url).toBe("/lens/");
-    expect(m.scope).toBe("/lens/");
+    const m = buildPwaManifest("/notes/");
+    expect(m.id).toBe("/notes/");
+    expect(m.start_url).toBe("/notes/");
+    expect(m.scope).toBe("/notes/");
   });
 
   it("normalizes a base passed without a trailing slash", () => {
-    const m = buildPwaManifest("/lens");
-    expect(m.start_url).toBe("/lens/");
+    const m = buildPwaManifest("/notes");
+    expect(m.start_url).toBe("/notes/");
   });
 });
