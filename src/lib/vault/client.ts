@@ -178,24 +178,30 @@ export class VaultClient {
     return rows ?? null;
   }
 
-  async updateNote(id: string, payload: UpdateNotePayload): Promise<Note> {
+  async updateNote(
+    id: string,
+    payload: UpdateNotePayload,
+    opts: { signal?: AbortSignal } = {},
+  ): Promise<Note> {
     return this.request<Note>(`/api/notes/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+      signal: opts.signal,
     });
   }
 
-  async createNote(payload: CreateNotePayload): Promise<Note> {
+  async createNote(payload: CreateNotePayload, opts: { signal?: AbortSignal } = {}): Promise<Note> {
     return this.request<Note>("/api/notes", {
       method: "POST",
       body: JSON.stringify(payload),
+      signal: opts.signal,
     });
   }
 
-  async deleteNote(id: string): Promise<void> {
+  async deleteNote(id: string, opts: { signal?: AbortSignal } = {}): Promise<void> {
     await this.request<{ deleted: boolean; id: string } | undefined>(
       `/api/notes/${encodeURIComponent(id)}`,
-      { method: "DELETE" },
+      { method: "DELETE", signal: opts.signal },
     );
   }
 
