@@ -568,4 +568,40 @@ describe("Notes route", () => {
       expect(after.length).toBeGreaterThan(0);
     });
   });
+
+  it("constrains long paths and tag chips inside the note row instead of overflowing", async () => {
+    // A real-world long path and a slash-delimited tag with no whitespace
+    // would previously push the card past the right edge on 360px viewports.
+    const longPath =
+      "Work/Projects/Parachute/launch-week/summary-with-a-very-long-filename-2026-04-22.md";
+    const longTag = "summary/monthly-2026-01-draft-v2-extended";
+    installFetch({
+      notes: [
+        {
+          id: "n1",
+          path: longPath,
+          tags: [longTag],
+          createdAt: "2026-04-18T10:00:00.000Z",
+        },
+      ],
+      tags: [{ name: longTag, count: 1 }],
+    });
+
+    render(<Notes />, { wrapper: Wrapper });
+
+    const pathSpan = await screen.findByText(longPath);
+    // The path must live inside a flex-item with min-w-0 AND truncate;
+    // otherwise truncate never engages and the cell expands to content.
+    expect(pathSpan.className).toMatch(/\bmin-w-0\b/);
+    expect(pathSpan.className).toMatch(/\btruncate\b/);
+
+    // The tag chip must cap to parent width and break long unbroken strings
+    // so it can't blow out the card on mobile. Scope to the note row since
+    // TagBrowser in the sidebar also renders the tag label.
+    const row = pathSpan.closest("li") as HTMLElement;
+    expect(row).not.toBeNull();
+    const chip = within(row).getByText(`#${longTag}`);
+    expect(chip.className).toMatch(/\bmax-w-full\b/);
+    expect(chip.className).toMatch(/\bbreak-all\b/);
+  });
 });

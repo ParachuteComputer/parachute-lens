@@ -127,8 +127,8 @@ function TagFilter({
             onClick={() => toggle(t)}
             className={
               active
-                ? "rounded-full border border-accent bg-accent/10 px-2 py-0.5 text-accent"
-                : "rounded-full border border-border bg-card px-2 py-0.5 hover:text-accent"
+                ? "max-w-full break-all rounded-full border border-accent bg-accent/10 px-2 py-0.5 text-accent"
+                : "max-w-full break-all rounded-full border border-border bg-card px-2 py-0.5 hover:text-accent"
             }
           >
             {t}

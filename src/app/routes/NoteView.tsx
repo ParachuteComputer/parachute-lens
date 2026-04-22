@@ -172,7 +172,7 @@ function HeaderTags({ tags }: { tags: string[] }) {
         <Link
           key={t}
           to={`/?tag=${encodeURIComponent(t)}`}
-          className="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent hover:border-accent hover:bg-accent/20"
+          className="max-w-full break-all rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent hover:border-accent hover:bg-accent/20"
         >
           #{t}
         </Link>

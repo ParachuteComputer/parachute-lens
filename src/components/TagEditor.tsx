@@ -13,9 +13,9 @@ export function TagEditor({ tags, input, onInputChange, onAdd, onRemove }: Props
       {tags.map((t) => (
         <span
           key={t}
-          className="inline-flex items-center gap-1 rounded-full border border-border bg-bg/60 px-2 py-0.5 text-xs text-fg-muted"
+          className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-bg/60 px-2 py-0.5 text-xs text-fg-muted"
         >
-          {t}
+          <span className="min-w-0 break-all">{t}</span>
           <button
             type="button"
             onClick={() => onRemove(t)}
