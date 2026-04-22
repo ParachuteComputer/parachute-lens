@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   // Mirror the production default so `import.meta.env.BASE_URL` in tests
   // reflects what the SPA actually sees at runtime.
-  base: "/lens/",
+  base: "/notes/",
   plugins: [react()],
   resolve: {
     alias: {

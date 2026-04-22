@@ -42,7 +42,7 @@ export async function discoverAuthServer(
 }
 
 /**
- * Register Lens as a dynamic OAuth client (RFC 7591). Vault validates the
+ * Register Notes as a dynamic OAuth client (RFC 7591). Vault validates the
  * client_id against its oauth_clients table at each /oauth/authorize, so
  * we must register before we can redirect the user.
  */
@@ -55,7 +55,7 @@ export async function registerClient(
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({
-      client_name: "Parachute Lens",
+      client_name: "Parachute Notes",
       redirect_uris: [redirectUri],
       grant_types: ["authorization_code"],
       response_types: ["code"],

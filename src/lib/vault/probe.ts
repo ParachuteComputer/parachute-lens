@@ -22,7 +22,7 @@ const DEFAULT_TIMEOUT_MS = 2500;
 //      case: the hub origin *itself* proxies OAuth metadata (so direct
 //      discovery would succeed at the hub origin, which isn't a vault),
 //      but only the registry reveals the actual vault resource URL
-//      (`${origin}/vault/<name>`). Preferring the registry ensures Lens
+//      (`${origin}/vault/<name>`). Preferring the registry ensures Notes
 //      ends up pointing at the vault and not at the portal.
 //   2. Direct OAuth discovery fallback:
 //      `${input}/.well-known/oauth-authorization-server`. Covers the

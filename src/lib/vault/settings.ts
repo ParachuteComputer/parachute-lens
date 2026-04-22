@@ -8,12 +8,18 @@ import { DEFAULT_TAG_ROLES, type TagRoles, loadTagRoles, normalizeTagRoles } fro
 import type { Note } from "./types";
 
 // Per-vault settings live in a single note at this path. We stash the payload
-// in the note's metadata (under a `lens` key, so other modules could
+// in the note's metadata (under a `notes` key, so other modules could
 // theoretically share the file) and leave the note body empty. See
 // CLAUDE.md — "Tag roles" section for the motivation: without a vault-hosted
 // canonical copy, per-device localStorage can't sync across Aaron's laptop /
 // tablet / phone.
-export const SETTINGS_NOTE_PATH = ".parachute/lens/settings";
+export const SETTINGS_NOTE_PATH = ".parachute/notes/settings";
+
+// Prior location used by the Lens-branded frontend. Read on fetch-fallback so
+// existing installs (Aaron's running machine, anyone who hit main during the
+// brief Lens-branded window) keep their settings through the rebrand. We never
+// write here — the legacy note becomes harmless dead data after migration.
+export const LEGACY_SETTINGS_NOTE_PATH = ".parachute/lens/settings";
 
 export const SETTINGS_SCHEMA_VERSION = 1;
 
@@ -55,7 +61,9 @@ export function extractLensSettings(note: Note | null | undefined): LensSettings
     return { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES } };
   }
   const meta = note.metadata as Record<string, unknown>;
-  return normalizeLensSettings(meta.lens);
+  // Read `notes` first, fall back to the legacy `lens` key so a settings note
+  // written under the prior rename is still understood until it's next rewritten.
+  return normalizeLensSettings(meta.notes ?? meta.lens);
 }
 
 export function applySettingsPatch(base: LensSettings, patch: LensSettingsPatch): LensSettings {
@@ -239,7 +247,7 @@ async function writeSettingsToVault(
     const initial = applySettingsPatch(state.serverSettings ?? DEFAULT_LENS_SETTINGS, patch);
     try {
       const created = await client.createNote(
-        { path: SETTINGS_NOTE_PATH, content: "", metadata: { lens: initial } },
+        { path: SETTINGS_NOTE_PATH, content: "", metadata: { notes: initial } },
         { signal },
       );
       return {
@@ -264,7 +272,7 @@ async function writeSettingsToVault(
       const optimisticMerge = applySettingsPatch(state.serverSettings, patch);
       const updated = await client.updateNote(
         SETTINGS_NOTE_PATH,
-        { metadata: { lens: optimisticMerge }, if_updated_at: state.serverUpdatedAt },
+        { metadata: { notes: optimisticMerge }, if_updated_at: state.serverUpdatedAt },
         { signal },
       );
       return {
@@ -303,7 +311,7 @@ async function patchWithRefetch(
   if (!note) {
     const initial = applySettingsPatch(DEFAULT_LENS_SETTINGS, patch);
     const created = await client.createNote(
-      { path: SETTINGS_NOTE_PATH, content: "", metadata: { lens: initial } },
+      { path: SETTINGS_NOTE_PATH, content: "", metadata: { notes: initial } },
       { signal },
     );
     return {
@@ -317,7 +325,7 @@ async function patchWithRefetch(
   const baseline = note.updatedAt ?? note.createdAt;
   const updated = await client.updateNote(
     SETTINGS_NOTE_PATH,
-    { metadata: { lens: merged }, if_updated_at: baseline },
+    { metadata: { notes: merged }, if_updated_at: baseline },
     { signal },
   );
   return {
@@ -385,10 +393,24 @@ export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult
         }
         return { server: null, serverUpdatedAt: null, noteExists: false as const };
       } catch (err) {
-        if (err instanceof VaultNotFoundError) {
-          return { server: null, serverUpdatedAt: null, noteExists: false as const };
+        if (!(err instanceof VaultNotFoundError)) throw err;
+        // New-path 404 → try the legacy Lens-branded path. If it exists, seed
+        // the server view from it but report `noteExists: false` so the next
+        // write POSTs a fresh note at the new path instead of PATCHing the
+        // legacy one. The legacy note stays in place as harmless dead data.
+        try {
+          const legacy = await client!.getNote(LEGACY_SETTINGS_NOTE_PATH);
+          if (legacy) {
+            return {
+              server: extractLensSettings(legacy),
+              serverUpdatedAt: null,
+              noteExists: false as const,
+            };
+          }
+        } catch (legacyErr) {
+          if (!(legacyErr instanceof VaultNotFoundError)) throw legacyErr;
         }
-        throw err;
+        return { server: null, serverUpdatedAt: null, noteExists: false as const };
       }
     },
     retry: false,
@@ -437,13 +459,16 @@ export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult
       return;
     }
 
-    // No local pending change — trust the server.
+    // No local pending change — trust the server. Respect `remote.noteExists`
+    // (not hardcoded true) because the legacy-path fallback loads server
+    // content from `.parachute/lens/settings` but reports `noteExists: false`
+    // so the next write POSTs at the new path rather than PATCHing the legacy.
     const nextEntry: SettingsCacheEntry = remote.server
       ? {
           settings: remote.server,
           serverSettings: remote.server,
           serverUpdatedAt: remote.serverUpdatedAt,
-          noteExists: true,
+          noteExists: remote.noteExists,
           dirtyPatch: null,
         }
       : {
@@ -555,7 +580,7 @@ export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult
 }
 
 // ---------------------------------------------------------------------------
-// Tag-roles wrapper — keeps the pre-existing surface the rest of Lens uses.
+// Tag-roles wrapper — keeps the pre-existing surface the rest of Notes uses.
 // Lives here, not in tag-roles.ts, to avoid a cycle (settings imports from
 // tag-roles for types and normalization helpers).
 // ---------------------------------------------------------------------------

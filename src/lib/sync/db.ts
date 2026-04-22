@@ -1,6 +1,10 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import type { BlobPathMapRow, IdMapRow, MetaRow, PendingRow } from "./types";
 
+// Preserved across the 2026-04-22 Lens→Notes rename: IndexedDB databases are
+// origin+name scoped, so renaming would orphan Aaron's (and any rc.1 user's)
+// offline queue, id-map, blob store, and queued mutations. The product's
+// external identity is "Notes"; this internal handle stays.
 export const DB_NAME = "parachute-lens";
 // Bump on schema changes and add a case to `migrate()`. Read schemaVersion from
 // `meta` if you need to introspect which migrations have run.

@@ -43,7 +43,7 @@ export function Header() {
           to="/"
           className="font-serif text-lg tracking-tight text-fg hover:text-accent md:text-xl"
         >
-          Parachute Lens
+          Parachute Notes
         </Link>
 
         {/* Desktop nav */}

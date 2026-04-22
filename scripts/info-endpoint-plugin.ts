@@ -41,7 +41,7 @@ export function infoEndpointPlugin(options: PluginOptions): Plugin {
   }
 
   return {
-    name: "parachute-lens-info-endpoint",
+    name: "parachute-notes-info-endpoint",
     configureServer: attach,
     configurePreviewServer: attach,
     generateBundle() {

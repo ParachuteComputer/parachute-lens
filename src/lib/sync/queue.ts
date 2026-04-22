@@ -305,7 +305,7 @@ async function drainUpdateSettings(
         await client.createNote({
           path: notePath,
           content: "",
-          metadata: { lens: applySettingsPatch(DEFAULT_LENS_SETTINGS, patch) },
+          metadata: { notes: applySettingsPatch(DEFAULT_LENS_SETTINGS, patch) },
         });
         return;
       } catch (err) {
@@ -321,7 +321,7 @@ async function drainUpdateSettings(
     const baseline = note.updatedAt ?? note.createdAt;
     try {
       await client.updateNote(notePath, {
-        metadata: { lens: merged },
+        metadata: { notes: merged },
         if_updated_at: baseline,
       });
       return;
@@ -333,7 +333,7 @@ async function drainUpdateSettings(
         // Exhausted polite retries. Force the write — merged against the
         // latest server state we fetched, so this is still the "safest
         // possible overwrite" rather than a blind one.
-        await client.updateNote(notePath, { metadata: { lens: merged }, force: true });
+        await client.updateNote(notePath, { metadata: { notes: merged }, force: true });
         return;
       }
       throw err;

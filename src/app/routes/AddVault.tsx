@@ -55,7 +55,7 @@ export function AddVault() {
       <h1 className="mb-2 font-serif text-4xl tracking-tight">Connect a vault</h1>
       <p className="mb-8 text-fg-muted">
         Paste the URL of a Parachute Vault. You'll be taken to its consent page to authorize
-        Parachute Lens.
+        Parachute Notes.
       </p>
 
       <form onSubmit={onSubmit} className="space-y-4">

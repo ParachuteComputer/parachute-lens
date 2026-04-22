@@ -18,7 +18,7 @@ const validMetadata = {
 
 const clientReg = {
   client_id: "client-123",
-  client_name: "Parachute Lens",
+  client_name: "Parachute Notes",
   redirect_uris: ["http://localhost:3000/oauth/callback"],
 };
 
@@ -53,7 +53,7 @@ describe("beginOAuth", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("client_id")).toBe("client-123");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:3000/lens/oauth/callback");
+    expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:3000/notes/oauth/callback");
     expect(url.searchParams.get("scope")).toBe("full");
 
     const challenge = url.searchParams.get("code_challenge");
@@ -86,17 +86,17 @@ describe("redirectUriForOrigin under VITE_BASE_PATH", () => {
     );
   });
 
-  it("includes the base path when Lens is mounted under a sub-path", () => {
-    vi.stubEnv("BASE_URL", "/lens/");
+  it("includes the base path when Notes is mounted under a sub-path", () => {
+    vi.stubEnv("BASE_URL", "/notes/");
     expect(redirectUriForOrigin("http://host.example")).toBe(
-      "http://host.example/lens/oauth/callback",
+      "http://host.example/notes/oauth/callback",
     );
   });
 
   it("strips a single trailing slash on the origin and the base", () => {
-    vi.stubEnv("BASE_URL", "/lens/");
+    vi.stubEnv("BASE_URL", "/notes/");
     expect(redirectUriForOrigin("http://host.example/")).toBe(
-      "http://host.example/lens/oauth/callback",
+      "http://host.example/notes/oauth/callback",
     );
   });
 });
