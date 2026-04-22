@@ -8,6 +8,7 @@ export * from "./parachute-json";
 export * from "./pkce";
 export * from "./probe";
 export * from "./queries";
+export * from "./settings";
 export * from "./storage";
 export * from "./store";
 export * from "./tag-roles";
