@@ -1,5 +1,6 @@
 import { QuickSwitch } from "@/components/QuickSwitch";
 import { QuickSwitchMount } from "@/components/QuickSwitchMount";
+import { useQuickSwitchOpen } from "@/lib/quick-switch/open-store";
 import { pushRecent } from "@/lib/quick-switch/recents";
 import { useVaultStore } from "@/lib/vault/store";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -169,11 +170,13 @@ describe("QuickSwitchMount", () => {
   beforeEach(() => {
     localStorage.clear();
     useVaultStore.setState({ vaults: {}, activeVaultId: null });
+    useQuickSwitchOpen.setState({ open: false });
     seedStore();
   });
   afterEach(() => {
     vi.unstubAllGlobals();
     useVaultStore.setState({ vaults: {}, activeVaultId: null });
+    useQuickSwitchOpen.setState({ open: false });
     localStorage.clear();
   });
 

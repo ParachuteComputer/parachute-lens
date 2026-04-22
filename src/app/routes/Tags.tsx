@@ -45,11 +45,11 @@ export function Tags() {
   const offline = !isOnline;
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
-      <header className="mb-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-3">
+    <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-10">
+      <header className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-3 md:mb-6">
         <div>
           <p className="text-xs uppercase tracking-wider text-fg-dim">{activeVault.name}</p>
-          <h1 className="font-serif text-3xl tracking-tight">Tags</h1>
+          <h1 className="font-serif text-2xl tracking-tight md:text-3xl">Tags</h1>
         </div>
         <button
           type="button"

@@ -20,14 +20,14 @@ export function Settings() {
   if (!activeVault) return <Navigate to="/" replace />;
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-2xl px-4 py-7 md:px-6 md:py-12">
       <header className="mb-8">
         <nav className="mb-3 text-sm text-fg-dim">
           <Link to="/" className="hover:text-accent">
             ← Home
           </Link>
         </nav>
-        <h1 className="font-serif text-3xl tracking-tight">Settings</h1>
+        <h1 className="font-serif text-2xl tracking-tight md:text-3xl">Settings</h1>
         <p className="mt-1 text-sm text-fg-muted">
           Configuring <span className="text-fg">{activeVault.name}</span>.
         </p>

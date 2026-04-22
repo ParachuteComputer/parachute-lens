@@ -60,6 +60,17 @@ function Wrapper({ children }: { children: ReactNode }) {
   );
 }
 
+function openFoldersAccordion() {
+  const details = document
+    .getElementById("notes-sidebar")
+    ?.querySelector("details") as HTMLDetailsElement | null;
+  if (!details) throw new Error("Folders accordion not found");
+  act(() => {
+    details.open = true;
+    details.dispatchEvent(new Event("toggle"));
+  });
+}
+
 function lastNotesUrl(fetchImpl: ReturnType<typeof installFetch>): string {
   // The saved-views sidebar also queries /api/notes (tag=view & views path
   // prefix). Filter those out so assertions target the primary list query.
@@ -226,8 +237,10 @@ describe("Notes route", () => {
     render(<Notes />, { wrapper: Wrapper });
 
     // Strip buttons render as pressable chips, not links, so tag filters apply
-    // in-place rather than routing away.
-    const dailyChip = await screen.findByRole("button", { name: /#daily/i });
+    // in-place rather than routing away. Sidebar TagBrowser also renders a
+    // #daily button — scope the query to the strip explicitly.
+    const strip = await screen.findByRole("navigation", { name: /pinned tags/i });
+    const dailyChip = within(strip).getByRole("button", { name: /#daily/i });
     expect(dailyChip).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(dailyChip);
     await waitFor(() => expect(dailyChip).toHaveAttribute("aria-pressed", "true"));
@@ -237,7 +250,8 @@ describe("Notes route", () => {
     installFetch({ notes: [], tags: [{ name: "daily", count: 2 }] });
     render(<Notes />, { wrapper: Wrapper });
     await screen.findByRole("list", { name: "Notes" }).catch(() => null);
-    expect(screen.queryByRole("button", { name: /#daily/i })).not.toBeInTheDocument();
+    // The sidebar tag browser renders #daily too — scope to the strip.
+    expect(screen.queryByRole("navigation", { name: /pinned tags/i })).not.toBeInTheDocument();
   });
 
   it("hides archived notes by default and shows them when toggled on", async () => {
@@ -306,6 +320,10 @@ describe("Notes route", () => {
 
     render(<Notes />, { wrapper: Wrapper });
 
+    // Folders accordion is collapsed by default — the tree is lazy-fetched
+    // on open.
+    await screen.findByText("A/note-0.md");
+    openFoldersAccordion();
     expect(await screen.findByRole("complementary", { name: /path tree/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^A\b/ })).toBeInTheDocument();
   });
@@ -344,6 +362,8 @@ describe("Notes route", () => {
     });
 
     render(<Notes />, { wrapper: Wrapper });
+    await screen.findByText("Solo/note.md");
+    openFoldersAccordion();
     expect(await screen.findByRole("complementary", { name: /path tree/i })).toBeInTheDocument();
   });
 
@@ -457,6 +477,38 @@ describe("Notes route", () => {
     expect(patchCalls[0]?.body).toEqual({ tags: { add: ["project"] } });
   });
 
+  it("sidebar renders the tag browser above the collapsed Folders details", async () => {
+    installFetch({
+      notes: ["A", "B", "C", "D", "E"].map((root, i) => ({
+        id: `n${i}`,
+        path: `${root}/note-${i}.md`,
+        createdAt: "2026-04-18T10:00:00.000Z",
+        tags: [],
+      })),
+      tags: [{ name: "idea", count: 2 }],
+    });
+
+    render(<Notes />, { wrapper: Wrapper });
+
+    const tagNav = await screen.findByRole("navigation", { name: /browse by tag/i });
+    const sidebar = document.getElementById("notes-sidebar");
+    expect(sidebar).not.toBeNull();
+    expect(sidebar?.contains(tagNav)).toBe(true);
+    // Folders is now a collapsed <details>. Waits for the async path-tree
+    // fetch to settle before the wrapper is mounted.
+    const details = await waitFor(() => {
+      const d = (sidebar as HTMLElement).querySelector("details");
+      expect(d).not.toBeNull();
+      return d as HTMLDetailsElement;
+    });
+    expect(details.open).toBe(false);
+    const summary = details.querySelector("summary");
+    expect(summary?.textContent).toContain("Folders");
+    // Tag-browser nav appears earlier in document order than the Folders group.
+    const comparison = tagNav.compareDocumentPosition(details);
+    expect(comparison & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("clicking a tree folder writes path_prefix to the URL", async () => {
     const fetchImpl = installFetch({
       notes: ["Canon", "B", "C", "D", "E"].map((root, i) => ({
@@ -470,6 +522,10 @@ describe("Notes route", () => {
 
     render(<Notes />, { wrapper: Wrapper });
 
+    // Folders accordion starts closed; open it so the tree query fires.
+    await screen.findByText("Canon/note-0.md");
+    openFoldersAccordion();
+
     const canonNode = await screen.findByRole("button", { name: /^Canon\b/ });
     fireEvent.click(canonNode);
 
@@ -478,6 +534,38 @@ describe("Notes route", () => {
     });
     await waitFor(() => {
       expect(lastNotesUrl(fetchImpl)).toContain("path_prefix=Canon");
+    });
+  });
+
+  it("does not fetch the path-tree query while the Folders accordion is closed", async () => {
+    const fetchImpl = installFetch({
+      notes: ["A", "B", "C", "D", "E"].map((root, i) => ({
+        id: `n${i}`,
+        path: `${root}/note-${i}.md`,
+        createdAt: "2026-04-18T10:00:00.000Z",
+        tags: [],
+      })),
+      tags: [],
+    });
+
+    render(<Notes />, { wrapper: Wrapper });
+
+    // Wait for the main notes list to settle so we know queries had a chance.
+    await screen.findByText("A/note-0.md");
+
+    const pathTreeCalls = fetchImpl.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes("/api/notes") && u.includes("limit=5000"));
+    expect(pathTreeCalls.length).toBe(0);
+
+    // Opening the accordion should trigger the fetch.
+    openFoldersAccordion();
+
+    await waitFor(() => {
+      const after = fetchImpl.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.includes("/api/notes") && u.includes("limit=5000"));
+      expect(after.length).toBeGreaterThan(0);
     });
   });
 });

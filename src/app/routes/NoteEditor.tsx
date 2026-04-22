@@ -26,7 +26,7 @@ export function NoteEditor() {
   if (!activeVault) return <Navigate to="/" replace />;
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8">
       <nav className="mb-4 text-sm text-fg-dim">
         <Link
           to={decodedId ? `/n/${encodeURIComponent(decodedId)}` : "/"}

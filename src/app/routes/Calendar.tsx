@@ -51,7 +51,7 @@ export function Calendar() {
   const isCurrent = `${parsed.year}-${pad2(parsed.month)}` === currentKey;
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10">
+    <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 md:py-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wider text-fg-dim">Calendar</p>

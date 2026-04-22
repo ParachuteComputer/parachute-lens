@@ -1,3 +1,4 @@
+import { BottomTabBar } from "@/components/BottomTabBar";
 import { Header } from "@/components/Header";
 import { QuickSwitchMount } from "@/components/QuickSwitchMount";
 import { Toaster } from "@/components/Toaster";
@@ -47,7 +48,7 @@ export function App() {
     <QueryProvider>
       <SyncProvider>
         <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}>
-          <div className="min-h-dvh bg-bg text-fg">
+          <div className="min-h-dvh bg-bg text-fg pb-16 md:pb-0">
             <Toaster />
             <UpdateBanner />
             <Header />
@@ -77,6 +78,7 @@ export function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
+            <BottomTabBar />
             <footer className="mx-auto max-w-5xl px-6 py-10 text-center text-sm text-fg-dim">
               <p>
                 Part of the{" "}

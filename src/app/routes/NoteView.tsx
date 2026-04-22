@@ -24,7 +24,7 @@ export function NoteView() {
   if (!activeVault) return <Navigate to="/" replace />;
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
       <nav className="mb-6 text-sm text-fg-dim">
         <Link to="/" className="hover:text-accent">
           ← All notes
