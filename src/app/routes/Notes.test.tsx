@@ -226,8 +226,10 @@ describe("Notes route", () => {
     render(<Notes />, { wrapper: Wrapper });
 
     // Strip buttons render as pressable chips, not links, so tag filters apply
-    // in-place rather than routing away.
-    const dailyChip = await screen.findByRole("button", { name: /#daily/i });
+    // in-place rather than routing away. Sidebar TagBrowser also renders a
+    // #daily button — scope the query to the strip explicitly.
+    const strip = await screen.findByRole("navigation", { name: /pinned tags/i });
+    const dailyChip = within(strip).getByRole("button", { name: /#daily/i });
     expect(dailyChip).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(dailyChip);
     await waitFor(() => expect(dailyChip).toHaveAttribute("aria-pressed", "true"));
@@ -237,7 +239,8 @@ describe("Notes route", () => {
     installFetch({ notes: [], tags: [{ name: "daily", count: 2 }] });
     render(<Notes />, { wrapper: Wrapper });
     await screen.findByRole("list", { name: "Notes" }).catch(() => null);
-    expect(screen.queryByRole("button", { name: /#daily/i })).not.toBeInTheDocument();
+    // The sidebar tag browser renders #daily too — scope to the strip.
+    expect(screen.queryByRole("navigation", { name: /pinned tags/i })).not.toBeInTheDocument();
   });
 
   it("hides archived notes by default and shows them when toggled on", async () => {
@@ -455,6 +458,38 @@ describe("Notes route", () => {
     });
     expect(patchCalls[0]?.url).toMatch(/\/api\/notes\/n1$/);
     expect(patchCalls[0]?.body).toEqual({ tags: { add: ["project"] } });
+  });
+
+  it("sidebar renders the tag browser above the collapsed Folders details", async () => {
+    installFetch({
+      notes: ["A", "B", "C", "D", "E"].map((root, i) => ({
+        id: `n${i}`,
+        path: `${root}/note-${i}.md`,
+        createdAt: "2026-04-18T10:00:00.000Z",
+        tags: [],
+      })),
+      tags: [{ name: "idea", count: 2 }],
+    });
+
+    render(<Notes />, { wrapper: Wrapper });
+
+    const tagNav = await screen.findByRole("navigation", { name: /browse by tag/i });
+    const sidebar = document.getElementById("notes-sidebar");
+    expect(sidebar).not.toBeNull();
+    expect(sidebar?.contains(tagNav)).toBe(true);
+    // Folders is now a collapsed <details>. Waits for the async path-tree
+    // fetch to settle before the wrapper is mounted.
+    const details = await waitFor(() => {
+      const d = (sidebar as HTMLElement).querySelector("details");
+      expect(d).not.toBeNull();
+      return d as HTMLDetailsElement;
+    });
+    expect(details.open).toBe(false);
+    const summary = details.querySelector("summary");
+    expect(summary?.textContent).toContain("Folders");
+    // Tag-browser nav appears earlier in document order than the Folders group.
+    const comparison = tagNav.compareDocumentPosition(details);
+    expect(comparison & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("clicking a tree folder writes path_prefix to the URL", async () => {

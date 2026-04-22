@@ -32,7 +32,7 @@ export function Today() {
   if (!activeVault) return <Navigate to="/" replace />;
   if (!parsed) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-10">
+      <div className="mx-auto max-w-3xl px-4 py-6 md:px-6 md:py-10">
         <p className="text-sm text-red-400">Invalid date in URL: {targetKey}</p>
         <Link to="/today" className="text-sm text-accent hover:underline">
           Back to today
@@ -47,11 +47,13 @@ export function Today() {
   const monthKey = targetKey.slice(0, 7);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
+    <div className="mx-auto max-w-3xl px-4 py-6 md:px-6 md:py-10">
       <header className="mb-6 flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wider text-fg-dim">{isToday ? "Today" : "On"}</p>
-          <h1 className="font-serif text-3xl tracking-tight">{formatLongDate(targetKey)}</h1>
+          <h1 className="font-serif text-2xl tracking-tight md:text-3xl">
+            {formatLongDate(targetKey)}
+          </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Link

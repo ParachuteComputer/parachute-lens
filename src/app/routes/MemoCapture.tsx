@@ -359,7 +359,7 @@ export function MemoCapture({ embedded = false }: { embedded?: boolean } = {}) {
 
   if (embedded) return inner;
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
+    <div className="mx-auto max-w-2xl px-4 py-5 md:px-6 md:py-8">
       <nav className="mb-4 text-sm text-fg-dim">
         <Link to="/" className="hover:text-accent">
           ← All notes

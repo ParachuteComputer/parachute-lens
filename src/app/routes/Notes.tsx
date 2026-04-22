@@ -1,4 +1,5 @@
 import { PathTree } from "@/components/PathTree";
+import { TagBrowser } from "@/components/TagBrowser";
 import { normalizeTag } from "@/components/TagEditor";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { meetsAutoThreshold, usePathTreeMode } from "@/lib/path-tree";
@@ -207,11 +208,11 @@ export function Notes({ preset }: { preset?: NotesPreset } = {}) {
   const filteringActive = isFiltersNonEmpty(currentFilters);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <header className="mb-6 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-3">
+    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
+      <header className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-3 md:mb-6">
         <div>
           <p className="text-xs uppercase tracking-wider text-fg-dim">{activeVault.name}</p>
-          <h1 className="font-serif text-3xl tracking-tight">{title}</h1>
+          <h1 className="font-serif text-2xl tracking-tight md:text-3xl">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm text-fg-muted">{subtitle}</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -273,20 +274,45 @@ export function Notes({ preset }: { preset?: NotesPreset } = {}) {
               id="notes-sidebar"
               className={`space-y-6 md:sticky md:top-6 md:self-start ${sidebarOpen ? "" : "hidden md:block"}`}
             >
-              {showPathTree ? (
-                <PathTree
-                  paths={treePaths}
-                  vaultId={activeVault.id}
-                  currentPrefix={pathPrefix}
-                  onSelect={(p) => setPathPrefix(p)}
-                />
-              ) : null}
+              <TagBrowser
+                tags={tags.data ?? []}
+                pinnedTags={pinnedTags}
+                selected={selectedTags}
+                onToggle={(name) =>
+                  setSelectedTags((cur) =>
+                    cur.includes(name) ? cur.filter((t) => t !== name) : [...cur, name],
+                  )
+                }
+                onClear={() => setSelectedTags([])}
+                isLoading={tags.isPending}
+              />
               <BuiltInViewsSidebar />
               <SavedViewsSidebar
                 views={savedViews.data}
                 isPending={savedViews.isPending}
                 error={savedViews.error}
               />
+              {showPathTree ? (
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-1 py-1 text-xs uppercase tracking-wider text-fg-dim hover:text-accent">
+                    <span>Folders</span>
+                    <span
+                      aria-hidden="true"
+                      className="font-mono text-xs transition-transform group-open:rotate-90"
+                    >
+                      ▸
+                    </span>
+                  </summary>
+                  <div className="mt-2">
+                    <PathTree
+                      paths={treePaths}
+                      vaultId={activeVault.id}
+                      currentPrefix={pathPrefix}
+                      onSelect={(p) => setPathPrefix(p)}
+                    />
+                  </div>
+                </details>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -527,7 +553,7 @@ function NoteRow({
       <div className="flex items-stretch">
         <Link
           to={`/n/${encodeURIComponent(note.id)}`}
-          className="block flex-1 min-w-0 px-4 py-3 hover:bg-bg/60 focus:bg-bg/60 focus:outline-none"
+          className="block flex-1 min-w-0 px-3 py-2.5 hover:bg-bg/60 focus:bg-bg/60 focus:outline-none md:px-4 md:py-3"
         >
           <div className="flex items-baseline justify-between gap-4">
             <span className="flex min-w-0 items-baseline gap-1.5">
@@ -699,7 +725,7 @@ function PinnedTagsStrip({
   const countFor = (name: string) =>
     tagCounts.find((t) => t.name.toLowerCase() === name.toLowerCase())?.count;
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-2">
+    <nav aria-label="Pinned tags" className="mb-6 flex flex-wrap items-center gap-2">
       <span className="text-xs uppercase tracking-wider text-fg-dim">Pinned tags</span>
       {pinnedTags.map((name) => {
         const active = selected.length === 1 && selected[0] === name;
@@ -723,7 +749,7 @@ function PinnedTagsStrip({
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
 

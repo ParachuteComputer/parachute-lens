@@ -30,10 +30,10 @@ export function Activity() {
   if (!activeVault) return <Navigate to="/" replace />;
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-6">
+    <div className="mx-auto max-w-3xl px-4 py-6 md:px-6 md:py-10">
+      <header className="mb-5 md:mb-6">
         <p className="text-xs uppercase tracking-wider text-fg-dim">Activity</p>
-        <h1 className="font-serif text-3xl tracking-tight">Recent changes</h1>
+        <h1 className="font-serif text-2xl tracking-tight md:text-3xl">Recent changes</h1>
         <p className="mt-1 text-sm text-fg-muted">
           Last 30 days, newest first. Deletions aren't tracked yet.
         </p>

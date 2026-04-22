@@ -38,8 +38,11 @@ export function Header() {
       className="sticky top-0 z-10 border-b border-border bg-bg/90 backdrop-blur"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <nav className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-6 py-4 md:py-5">
-        <Link to="/" className="font-serif text-xl tracking-tight text-fg hover:text-accent">
+      <nav className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 md:px-6 md:py-5">
+        <Link
+          to="/"
+          className="font-serif text-lg tracking-tight text-fg hover:text-accent md:text-xl"
+        >
           Parachute Lens
         </Link>
 
@@ -119,26 +122,14 @@ export function Header() {
       </nav>
 
       {menuOpen ? (
-        <div id="mobile-menu" className="border-t border-border bg-bg/95 px-6 py-4 md:hidden">
+        <div id="mobile-menu" className="border-t border-border bg-bg/95 px-4 py-4 md:hidden">
           {hasVaults ? (
             <div className="flex flex-col gap-3">
-              <Link to="/" className="py-1 text-sm text-fg hover:text-accent">
-                Notes
-              </Link>
-              <Link to="/tags" className="py-1 text-sm text-fg hover:text-accent">
-                Tags
-              </Link>
               <Link to="/graph" className="py-1 text-sm text-fg hover:text-accent">
                 Graph
               </Link>
               <Link to="/activity" className="py-1 text-sm text-fg hover:text-accent">
                 Activity
-              </Link>
-              <Link to="/capture" className="py-1 text-sm text-fg hover:text-accent">
-                + Capture
-              </Link>
-              <Link to="/settings" className="py-1 text-sm text-fg hover:text-accent">
-                Settings
               </Link>
               <button
                 type="button"
