@@ -162,11 +162,45 @@ export function useNote(id: string | undefined) {
   });
 }
 
-// When offline, enqueue instead of throwing. Call sites keep the same signature;
-// the returned Note is optimistic (local id + local timestamps) and is replaced
-// by the server-authored one when the drain lands.
+// Offline policy for mutations: we don't trust `navigator.onLine` alone. In the
+// installed-PWA standalone mode (caught 2026-04-21, issue #61) airplane mode
+// leaves `onLine === true` on Android Chrome, and a service worker can also
+// intercept the POST and never settle its fetch promise. So the policy is:
+//
+//   1. If we can see we're offline AND we have somewhere to enqueue, skip the
+//      network attempt entirely — cheap, no-wait enqueue.
+//   2. Otherwise try the network with a bounded AbortController timeout.
+//   3. If the network call rejects (error, abort, or timeout) and we have the
+//      sync DB available, enqueue the mutation and return the optimistic row.
+//   4. If there's nowhere to enqueue, re-throw — that's a genuine config fail.
+//
+// Callers keep the same signature; the returned Note is optimistic (local id +
+// local timestamps) and is replaced by the server-authored one when the drain
+// lands.
+const OFFLINE_FALLBACK_MS = 8_000;
+
 function isOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+async function withOfflineFallback<T>(
+  online: (signal: AbortSignal) => Promise<T>,
+  enqueueFallback: (() => Promise<T>) | null,
+): Promise<T> {
+  if (enqueueFallback && isOffline()) {
+    return enqueueFallback();
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new Error("offline-timeout")), OFFLINE_FALLBACK_MS);
+  try {
+    return await online(ctrl.signal);
+  } catch (err) {
+    if (enqueueFallback) return enqueueFallback();
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function optimisticCreatedNote(payload: CreateNotePayload, localId: string): Note {
@@ -219,12 +253,17 @@ export function useUpdateNote(id: string | undefined) {
   return useMutation({
     mutationFn: async (payload: UpdateNotePayload) => {
       if (!id) throw new Error("No note id");
-      if (isOffline() && db && activeId) {
-        const existing = qc.getQueryData<Note>(["note", activeId, id]);
-        return enqueueUpdate(db, activeId, id, payload, existing);
-      }
-      if (!client) throw new Error("No active vault");
-      return client.updateNote(id, payload);
+      const fallback =
+        db && activeId
+          ? () => {
+              const existing = qc.getQueryData<Note>(["note", activeId, id]);
+              return enqueueUpdate(db, activeId, id, payload, existing);
+            }
+          : null;
+      return withOfflineFallback((signal) => {
+        if (!client) throw new Error("No active vault");
+        return client.updateNote(id, payload, { signal });
+      }, fallback);
     },
     onSuccess: (updated) => {
       qc.setQueryData(["note", activeId, id], updated);
@@ -246,11 +285,11 @@ export function useCreateNote() {
 
   return useMutation({
     mutationFn: async (payload: CreateNotePayload) => {
-      if (isOffline() && db && activeId) {
-        return enqueueCreate(db, activeId, payload);
-      }
-      if (!client) throw new Error("No active vault");
-      return client.createNote(payload);
+      const fallback = db && activeId ? () => enqueueCreate(db, activeId, payload) : null;
+      return withOfflineFallback((signal) => {
+        if (!client) throw new Error("No active vault");
+        return client.createNote(payload, { signal });
+      }, fallback);
     },
     onSuccess: (created) => {
       qc.setQueryData(["note", activeId, created.id], created);
@@ -373,13 +412,18 @@ export function useDeleteNote() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      if (isOffline() && db && activeId) {
-        await enqueue(db, { kind: "delete-note", targetId: id }, { vaultId: activeId });
+      const fallback =
+        db && activeId
+          ? async () => {
+              await enqueue(db, { kind: "delete-note", targetId: id }, { vaultId: activeId });
+              return id;
+            }
+          : null;
+      return withOfflineFallback(async (signal) => {
+        if (!client) throw new Error("No active vault");
+        await client.deleteNote(id, { signal });
         return id;
-      }
-      if (!client) throw new Error("No active vault");
-      await client.deleteNote(id);
-      return id;
+      }, fallback);
     },
     onSuccess: (id) => {
       qc.removeQueries({ queryKey: ["note", activeId, id] });
