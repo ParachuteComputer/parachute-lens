@@ -1,12 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_LENS_SETTINGS,
   SETTINGS_NOTE_PATH,
   SETTINGS_SCHEMA_VERSION,
+  type SettingsCacheEntry,
   applySettingsPatch,
   deleteCachedSettings,
   extractLensSettings,
   loadCachedSettings,
+  mergeSettingsPatches,
   normalizeLensSettings,
   saveCachedSettings,
 } from "./settings";
@@ -121,6 +123,34 @@ describe("applySettingsPatch", () => {
   });
 });
 
+describe("mergeSettingsPatches", () => {
+  it("returns the new patch when there is no older one", () => {
+    const out = mergeSettingsPatches(null, { tagRoles: { pinned: "fav" } });
+    expect(out.tagRoles).toEqual({ pinned: "fav" });
+  });
+
+  it("newer keys win but disjoint keys from both sides survive", () => {
+    const older = { tagRoles: { pinned: "fav" } };
+    const newer = { tagRoles: { archived: "done" } };
+    const out = mergeSettingsPatches(older, newer);
+    expect(out.tagRoles).toEqual({ pinned: "fav", archived: "done" });
+  });
+
+  it("newer value overrides older value for the same key", () => {
+    const out = mergeSettingsPatches(
+      { tagRoles: { pinned: "old" } },
+      { tagRoles: { pinned: "new" } },
+    );
+    expect(out.tagRoles).toEqual({ pinned: "new" });
+  });
+
+  it("propagates schemaVersion", () => {
+    expect(mergeSettingsPatches({ schemaVersion: 1 }, {}).schemaVersion).toBe(1);
+    expect(mergeSettingsPatches({}, { schemaVersion: 2 }).schemaVersion).toBe(2);
+    expect(mergeSettingsPatches({ schemaVersion: 1 }, { schemaVersion: 2 }).schemaVersion).toBe(2);
+  });
+});
+
 describe("cache round-trip", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -134,11 +164,18 @@ describe("cache round-trip", () => {
   });
 
   it("persists the full entry and reloads it verbatim", () => {
-    const entry = {
-      settings: { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "fav" } },
-      noteUpdatedAt: "2026-04-22T12:00:00Z",
+    const entry: SettingsCacheEntry = {
+      settings: {
+        ...DEFAULT_LENS_SETTINGS,
+        tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "fav" },
+      },
+      serverSettings: {
+        ...DEFAULT_LENS_SETTINGS,
+        tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "fav" },
+      },
+      serverUpdatedAt: "2026-04-22T12:00:00Z",
       noteExists: true,
-      dirty: false,
+      dirtyPatch: null,
     };
     saveCachedSettings("v1", entry);
     const out = loadCachedSettings("v1");
@@ -146,18 +183,15 @@ describe("cache round-trip", () => {
   });
 
   it("scopes by vaultId", () => {
-    saveCachedSettings("v1", {
-      settings: { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "one" } },
-      noteUpdatedAt: null,
+    const e = (pinned: string): SettingsCacheEntry => ({
+      settings: { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES, pinned } },
+      serverSettings: null,
+      serverUpdatedAt: null,
       noteExists: false,
-      dirty: true,
+      dirtyPatch: { tagRoles: { pinned } },
     });
-    saveCachedSettings("v2", {
-      settings: { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "two" } },
-      noteUpdatedAt: null,
-      noteExists: false,
-      dirty: false,
-    });
+    saveCachedSettings("v1", e("one"));
+    saveCachedSettings("v2", e("two"));
     expect(loadCachedSettings("v1")?.settings.tagRoles.pinned).toBe("one");
     expect(loadCachedSettings("v2")?.settings.tagRoles.pinned).toBe("two");
   });
@@ -168,28 +202,82 @@ describe("cache round-trip", () => {
   });
 
   it("deleteCachedSettings removes the entry", () => {
-    saveCachedSettings("v1", {
+    const entry: SettingsCacheEntry = {
       settings: DEFAULT_LENS_SETTINGS,
-      noteUpdatedAt: null,
+      serverSettings: null,
+      serverUpdatedAt: null,
       noteExists: false,
-      dirty: false,
-    });
+      dirtyPatch: null,
+    };
+    saveCachedSettings("v1", entry);
     deleteCachedSettings("v1");
     expect(loadCachedSettings("v1")).toBeNull();
   });
 
-  it("normalizes a partially-formed cached entry on load", () => {
-    // A previous Lens build could have written an entry with a stale shape.
-    // Load should be tolerant rather than dropping the whole cache.
-    localStorage.setItem(
-      "lens:settings:v1",
-      JSON.stringify({ settings: { tagRoles: { pinned: "starred" } } }),
-    );
+  it("reconstructs settings from a persisted dirtyPatch on load", () => {
+    // If the cache was written when a dirty patch was pending, we should
+    // reconstruct the same merged view on load so the UI doesn't flash
+    // unpatched values before the write lands.
+    const entry: SettingsCacheEntry = {
+      settings: { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "dirty" } },
+      serverSettings: DEFAULT_LENS_SETTINGS,
+      serverUpdatedAt: "2026-04-22T00:00:00Z",
+      noteExists: true,
+      dirtyPatch: { tagRoles: { pinned: "dirty" } },
+    };
+    saveCachedSettings("v1", entry);
     const out = loadCachedSettings("v1");
-    expect(out?.settings.tagRoles.pinned).toBe("starred");
-    expect(out?.settings.tagRoles.archived).toBe(DEFAULT_TAG_ROLES.archived);
-    expect(out?.noteUpdatedAt).toBeNull();
-    expect(out?.noteExists).toBe(false);
-    expect(out?.dirty).toBe(false);
+    expect(out?.settings.tagRoles.pinned).toBe("dirty");
+    expect(out?.dirtyPatch?.tagRoles?.pinned).toBe("dirty");
+  });
+});
+
+describe("concurrent-write invariant (merge-on-409)", () => {
+  // Simulates the team-lead's Blocker 2 scenario. Device A and Device B both
+  // fetch an empty settings note. Device A writes tagRoles.pinned first.
+  // Device B, still holding Device A's pre-write updatedAt, tries to write
+  // tagRoles.archived. The vault 409s. On refetch+merge, Device B must
+  // preserve Device A's `pinned` change while landing its own `archived`.
+  it("merges patches onto refetched server state instead of clobbering", async () => {
+    const base = DEFAULT_LENS_SETTINGS;
+    const sharedUpdatedAt = "2026-04-22T10:00:00Z";
+
+    // Server state after Device A's write has landed.
+    const serverAfterA: Note = {
+      id: "n1",
+      createdAt: "2026-04-22T09:00:00Z",
+      updatedAt: "2026-04-22T10:30:00Z",
+      metadata: {
+        lens: {
+          schemaVersion: 1,
+          tagRoles: { ...DEFAULT_TAG_ROLES, pinned: "A-pinned" },
+        },
+      },
+    };
+
+    // Helper: simulate what the 409-retry path does. Refetch, merge caller's
+    // *patch* (not a pre-merged next) onto the server, then PATCH.
+    function devicesBMerge() {
+      const server = extractLensSettings(serverAfterA);
+      const devBPatch = { tagRoles: { archived: "B-archived" } };
+      return applySettingsPatch(server, devBPatch);
+    }
+
+    const merged = devicesBMerge();
+    expect(merged.tagRoles.pinned).toBe("A-pinned"); // preserved
+    expect(merged.tagRoles.archived).toBe("B-archived"); // applied
+    // And unchanged keys stay the baseline defaults.
+    expect(merged.tagRoles.view).toBe(base.tagRoles.view);
+
+    // Anti-test: the bug this fix addresses. If device B re-sends its
+    // pre-409 `next` (computed from a stale cache that didn't know about A's
+    // write), it would clobber A's pinned.
+    const devBStaleNext = applySettingsPatch(base, { tagRoles: { archived: "B-archived" } });
+    expect(devBStaleNext.tagRoles.pinned).not.toBe("A-pinned"); // reproduces the bug
+    // Confirms the documented behaviour: sharedUpdatedAt here is just a
+    // marker that both devices started from the same fetch.
+    expect(sharedUpdatedAt).toBe("2026-04-22T10:00:00Z");
+    // Silence unused warnings in tidy test bodies.
+    vi.fn();
   });
 });

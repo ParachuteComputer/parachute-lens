@@ -24,6 +24,16 @@ export interface LensSettings {
   tagRoles: TagRoles;
 }
 
+// Patch type mirrors LensSettings but lets callers supply only the fields
+// they want to change — including a partial tagRoles (e.g. bump `pinned` only).
+// Threaded through the write stack so that on a 409 we re-apply the ORIGINAL
+// patch onto the refetched server state, instead of overwriting with a
+// resolved-from-stale-cache `next`.
+export interface LensSettingsPatch {
+  schemaVersion?: number;
+  tagRoles?: Partial<TagRoles>;
+}
+
 export const DEFAULT_LENS_SETTINGS: LensSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
   tagRoles: { ...DEFAULT_TAG_ROLES },
@@ -48,13 +58,6 @@ export function extractLensSettings(note: Note | null | undefined): LensSettings
   return normalizeLensSettings(meta.lens);
 }
 
-// Patch type mirrors LensSettings but lets callers supply only the fields
-// they want to change — including a partial tagRoles (e.g. bump `pinned` only).
-export interface LensSettingsPatch {
-  schemaVersion?: number;
-  tagRoles?: Partial<TagRoles>;
-}
-
 export function applySettingsPatch(base: LensSettings, patch: LensSettingsPatch): LensSettings {
   return {
     schemaVersion: patch.schemaVersion ?? base.schemaVersion,
@@ -64,12 +67,34 @@ export function applySettingsPatch(base: LensSettings, patch: LensSettingsPatch)
   };
 }
 
+// Fold a newer patch into an older one. Used to accumulate successive local
+// edits (e.g. the user toggles pinned, then archived, both while offline).
+// Newer field values win; when both sides have a partial `tagRoles`, merge
+// them key-by-key so changes on disjoint keys both survive.
+export function mergeSettingsPatches(
+  older: LensSettingsPatch | null,
+  newer: LensSettingsPatch,
+): LensSettingsPatch {
+  if (!older) return { ...newer, tagRoles: newer.tagRoles ? { ...newer.tagRoles } : undefined };
+  const merged: LensSettingsPatch = {};
+  if (newer.schemaVersion !== undefined || older.schemaVersion !== undefined) {
+    merged.schemaVersion = newer.schemaVersion ?? older.schemaVersion;
+  }
+  if (newer.tagRoles || older.tagRoles) {
+    merged.tagRoles = { ...(older.tagRoles ?? {}), ...(newer.tagRoles ?? {}) };
+  }
+  return merged;
+}
+
 // ---------------------------------------------------------------------------
 // localStorage cache
 //
-// The cache lets us paint instantly on mount before the vault fetch resolves,
-// and serves as offline fallback. `dirty` marks a local change that hasn't
-// been confirmed-written to the vault — on next online mount we re-push it.
+// The cache tracks (a) what the UI should render (`settings`), (b) what the
+// server last showed us (`serverSettings` + `serverUpdatedAt`), and (c) any
+// locally-pending edits as a patch (`dirtyPatch`). Keeping the patch around
+// — instead of only "next" — lets the reconcile and drain paths re-apply the
+// patch onto whatever the server currently has, preserving fields that other
+// devices may have touched between our fetch and our write.
 // ---------------------------------------------------------------------------
 
 const CACHE_PREFIX = "lens:settings:";
@@ -79,17 +104,32 @@ function cacheKey(vaultId: string): string {
 }
 
 export interface SettingsCacheEntry {
+  // Rendered view (server ⊕ dirtyPatch). Stored directly so cold-mount paint
+  // doesn't need to recompute.
   settings: LensSettings;
-  // The server-side `updated_at` of the settings note as we last observed it.
-  // Used as `if_updated_at` for optimistic concurrency on PATCH. Null when
-  // the note hasn't been written yet.
-  noteUpdatedAt: string | null;
+  // Last-known server-authored state. Null before the first successful fetch.
+  serverSettings: LensSettings | null;
+  // `updated_at` of the settings note as we last observed it. The `if_updated_at`
+  // baseline for the next PATCH. Null when the note hasn't been written.
+  serverUpdatedAt: string | null;
   // True once we've confirmed the note exists on the vault. Lets us pick POST
   // vs. PATCH for the first write without another round-trip.
   noteExists: boolean;
-  // True when we've applied a local change we haven't confirmed landed on the
-  // server yet. Cleared on successful write-through.
-  dirty: boolean;
+  // Accumulated locally-pending edits that haven't been confirmed on the
+  // server. Null when clean. Persisted so a reboot-while-offline still flushes
+  // on the next successful fetch.
+  dirtyPatch: LensSettingsPatch | null;
+}
+
+function cleanEntry(settings: LensSettings | null): SettingsCacheEntry {
+  const base = settings ?? { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES } };
+  return {
+    settings: base,
+    serverSettings: settings,
+    serverUpdatedAt: null,
+    noteExists: false,
+    dirtyPatch: null,
+  };
 }
 
 export function loadCachedSettings(vaultId: string): SettingsCacheEntry | null {
@@ -98,11 +138,23 @@ export function loadCachedSettings(vaultId: string): SettingsCacheEntry | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<SettingsCacheEntry>;
     if (!parsed || typeof parsed !== "object") return null;
+    const serverSettings =
+      parsed.serverSettings === null
+        ? null
+        : parsed.serverSettings
+          ? normalizeLensSettings(parsed.serverSettings)
+          : null;
+    const dirtyPatch = parsed.dirtyPatch ?? null;
+    const base = serverSettings ?? { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES } };
+    const settings = dirtyPatch
+      ? applySettingsPatch(base, dirtyPatch)
+      : normalizeLensSettings(parsed.settings ?? base);
     return {
-      settings: normalizeLensSettings(parsed.settings),
-      noteUpdatedAt: typeof parsed.noteUpdatedAt === "string" ? parsed.noteUpdatedAt : null,
+      settings,
+      serverSettings,
+      serverUpdatedAt: typeof parsed.serverUpdatedAt === "string" ? parsed.serverUpdatedAt : null,
       noteExists: parsed.noteExists === true,
-      dirty: parsed.dirty === true,
+      dirtyPatch,
     };
   } catch {
     return null;
@@ -128,100 +180,119 @@ export function deleteCachedSettings(vaultId: string): void {
 // One-time migration from legacy per-vault localStorage. Leaves the legacy
 // `lens:tag-roles:<vaultId>` key in place so a same-device rollback still
 // finds its data; a follow-up release cycle will clean it up.
-function seedFromLegacyTagRoles(vaultId: string): LensSettings | null {
+function seedFromLegacyTagRoles(vaultId: string): SettingsCacheEntry | null {
   if (typeof localStorage === "undefined") return null;
-  const legacyRaw = localStorage.getItem(`lens:tag-roles:${vaultId}`);
-  if (!legacyRaw) return null;
+  if (!localStorage.getItem(`lens:tag-roles:${vaultId}`)) return null;
   const legacyRoles = loadTagRoles(vaultId);
+  const patch: LensSettingsPatch = { tagRoles: legacyRoles };
+  const settings = applySettingsPatch(DEFAULT_LENS_SETTINGS, patch);
+  // Seeded entries are dirty by construction: we've never pushed them up.
   return {
-    ...DEFAULT_LENS_SETTINGS,
-    tagRoles: legacyRoles,
+    settings,
+    serverSettings: null,
+    serverUpdatedAt: null,
+    noteExists: false,
+    dirtyPatch: patch,
   };
 }
 
 function resolveInitialEntry(vaultId: string): SettingsCacheEntry {
   const cached = loadCachedSettings(vaultId);
   if (cached) return cached;
-  const legacy = seedFromLegacyTagRoles(vaultId);
-  if (legacy) {
-    // Mark as dirty so the first online fetch pushes this up to the vault.
-    return { settings: legacy, noteUpdatedAt: null, noteExists: false, dirty: true };
-  }
-  return {
-    settings: { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES } },
-    noteUpdatedAt: null,
-    noteExists: false,
-    dirty: false,
-  };
+  const seeded = seedFromLegacyTagRoles(vaultId);
+  if (seeded) return seeded;
+  return cleanEntry(null);
 }
 
 // ---------------------------------------------------------------------------
-// Write path — POST for first-ever-write, PATCH with if_updated_at otherwise.
-// Handles 409 by refetching and retrying once; caller surfaces "conflict"
-// status if that still fails.
+// Write path
+//
+// `writeSettingsToVault` takes the ORIGINAL patch, not a resolved `next`.
+// First-ever write: POST. Has baseline: PATCH (`if_updated_at`). On 409, we
+// refetch the note, re-apply the patch onto whatever the server now shows,
+// and PATCH with a fresh baseline. Re-applying the patch (instead of sending
+// a stale pre-409 `next`) keeps fields that another device may have updated
+// between our last fetch and our PATCH.
 // ---------------------------------------------------------------------------
+
+export interface WriteSettingsState {
+  serverSettings: LensSettings | null;
+  serverUpdatedAt: string | null;
+  noteExists: boolean;
+}
+
+export interface WriteSettingsResult {
+  server: LensSettings;
+  serverUpdatedAt: string | null;
+  noteExists: true;
+}
 
 async function writeSettingsToVault(
   client: VaultClient,
-  next: LensSettings,
-  prior: { noteUpdatedAt: string | null; noteExists: boolean },
+  state: WriteSettingsState,
+  patch: LensSettingsPatch,
   signal?: AbortSignal,
-): Promise<SettingsCacheEntry> {
-  const payload = { lens: next };
-
-  // First-ever write — the note doesn't exist, POST to create.
-  if (!prior.noteExists) {
+): Promise<WriteSettingsResult> {
+  // First-ever write — the note doesn't exist yet. POST with the patch
+  // layered onto defaults (no server state to merge against).
+  if (!state.noteExists) {
+    const initial = applySettingsPatch(state.serverSettings ?? DEFAULT_LENS_SETTINGS, patch);
     try {
       const created = await client.createNote(
-        { path: SETTINGS_NOTE_PATH, content: "", metadata: payload },
+        { path: SETTINGS_NOTE_PATH, content: "", metadata: { lens: initial } },
         { signal },
       );
       return {
-        settings: next,
-        noteUpdatedAt: created.updatedAt ?? created.createdAt ?? null,
+        server: initial,
+        serverUpdatedAt: created.updatedAt ?? created.createdAt ?? null,
         noteExists: true,
-        dirty: false,
       };
     } catch (err) {
-      // Another device raced us to POST. Refetch and PATCH.
       if (err instanceof VaultConflictError || isPathTakenError(err)) {
-        return patchWithRefetch(client, next, signal);
+        // Another device raced us to create. Fall through to refetch+PATCH.
+        return patchWithRefetch(client, patch, signal);
       }
       throw err;
     }
   }
 
-  // Note exists and we have a baseline — optimistic PATCH.
-  if (prior.noteUpdatedAt) {
+  // Note exists and we have a baseline — optimistic PATCH. We send the patch
+  // applied to our last-known server view; if nothing changed upstream that
+  // matches what's actually in the vault.
+  if (state.serverUpdatedAt && state.serverSettings) {
     try {
+      const optimisticMerge = applySettingsPatch(state.serverSettings, patch);
       const updated = await client.updateNote(
         SETTINGS_NOTE_PATH,
-        { metadata: payload, if_updated_at: prior.noteUpdatedAt },
+        { metadata: { lens: optimisticMerge }, if_updated_at: state.serverUpdatedAt },
         { signal },
       );
       return {
-        settings: next,
-        noteUpdatedAt: updated.updatedAt ?? prior.noteUpdatedAt,
+        server: optimisticMerge,
+        serverUpdatedAt: updated.updatedAt ?? state.serverUpdatedAt,
         noteExists: true,
-        dirty: false,
       };
     } catch (err) {
       if (err instanceof VaultConflictError) {
-        return patchWithRefetch(client, next, signal);
+        return patchWithRefetch(client, patch, signal);
       }
       throw err;
     }
   }
 
-  // Note exists but we lost the baseline — refetch to recover it, then PATCH.
-  return patchWithRefetch(client, next, signal);
+  // Note exists but baseline or server snapshot is missing — refetch to
+  // recover it, then PATCH.
+  return patchWithRefetch(client, patch, signal);
 }
 
+// Fetch the current server state, merge the caller's patch into it, and
+// PATCH with a fresh baseline. Handles the race where the note has been
+// deleted between fetches by POSTing a new one.
 async function patchWithRefetch(
   client: VaultClient,
-  next: LensSettings,
+  patch: LensSettingsPatch,
   signal?: AbortSignal,
-): Promise<SettingsCacheEntry> {
+): Promise<WriteSettingsResult> {
   let note: Note | null = null;
   try {
     note = await client.getNote(SETTINGS_NOTE_PATH);
@@ -230,30 +301,29 @@ async function patchWithRefetch(
     note = null;
   }
   if (!note) {
-    // Someone deleted the settings note between our last fetch and this retry.
-    // POST a fresh one with the caller's intended payload.
+    const initial = applySettingsPatch(DEFAULT_LENS_SETTINGS, patch);
     const created = await client.createNote(
-      { path: SETTINGS_NOTE_PATH, content: "", metadata: { lens: next } },
+      { path: SETTINGS_NOTE_PATH, content: "", metadata: { lens: initial } },
       { signal },
     );
     return {
-      settings: next,
-      noteUpdatedAt: created.updatedAt ?? created.createdAt ?? null,
+      server: initial,
+      serverUpdatedAt: created.updatedAt ?? created.createdAt ?? null,
       noteExists: true,
-      dirty: false,
     };
   }
+  const server = extractLensSettings(note);
+  const merged = applySettingsPatch(server, patch);
   const baseline = note.updatedAt ?? note.createdAt;
   const updated = await client.updateNote(
     SETTINGS_NOTE_PATH,
-    { metadata: { lens: next }, if_updated_at: baseline },
+    { metadata: { lens: merged }, if_updated_at: baseline },
     { signal },
   );
   return {
-    settings: next,
-    noteUpdatedAt: updated.updatedAt ?? baseline ?? null,
+    server: merged,
+    serverUpdatedAt: updated.updatedAt ?? baseline ?? null,
     noteExists: true,
-    dirty: false,
   };
 }
 
@@ -270,7 +340,7 @@ function isPathTakenError(err: unknown): boolean {
 // React hook
 // ---------------------------------------------------------------------------
 
-export type SettingsStatus = "loading" | "synced" | "offline" | "conflict";
+export type SettingsStatus = "loading" | "synced" | "queued" | "offline" | "conflict";
 
 export interface UseVaultSettingsResult {
   settings: LensSettings;
@@ -278,42 +348,28 @@ export interface UseVaultSettingsResult {
   status: SettingsStatus;
 }
 
-// Fetch-once-per-mount + write-through hook. Callers pass the active vault's
-// id; returns the current merged settings (defaults ← localStorage ← vault),
-// an `update(patch)` that writes to both places, and a status hint for UIs
-// that want to render a sync badge.
 export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult {
   const client = useActiveVaultClient();
   const qc = useQueryClient();
   const { db } = useSync();
 
-  // Initial state from cache (or legacy seed) — paints instantly before the
-  // vault fetch resolves.
   const initial = useMemo<SettingsCacheEntry>(() => {
-    if (!vaultId) {
-      return {
-        settings: { ...DEFAULT_LENS_SETTINGS, tagRoles: { ...DEFAULT_TAG_ROLES } },
-        noteUpdatedAt: null,
-        noteExists: false,
-        dirty: false,
-      };
-    }
+    if (!vaultId) return cleanEntry(null);
     return resolveInitialEntry(vaultId);
   }, [vaultId]);
 
   const [entry, setEntry] = useState<SettingsCacheEntry>(initial);
   const [status, setStatus] = useState<SettingsStatus>(client ? "loading" : "offline");
 
-  // Re-read from cache / seed when the active vault changes.
   useEffect(() => {
     setEntry(initial);
     setStatus(client ? "loading" : "offline");
   }, [initial, client]);
 
   // Remote fetch. On 404 we use defaults but DO NOT eagerly create the note —
-  // that happens lazily on the first `update()` (unless the cache is marked
-  // dirty from a legacy-seed migration, in which case the on-fetch reconcile
-  // pushes up).
+  // that happens lazily on the first `update()`. If the cache is dirty from
+  // an offline edit (or from the legacy-tag-roles seed), the reconcile below
+  // pushes it up on the next fetch.
   const fetchQuery = useQuery({
     queryKey: ["vault-settings", vaultId],
     enabled: !!vaultId && !!client,
@@ -322,15 +378,15 @@ export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult
         const note = await client!.getNote(SETTINGS_NOTE_PATH);
         if (note) {
           return {
-            settings: extractLensSettings(note),
-            noteUpdatedAt: note.updatedAt ?? note.createdAt ?? null,
-            noteExists: true,
+            server: extractLensSettings(note),
+            serverUpdatedAt: note.updatedAt ?? note.createdAt ?? null,
+            noteExists: true as const,
           };
         }
-        return { settings: null, noteUpdatedAt: null, noteExists: false };
+        return { server: null, serverUpdatedAt: null, noteExists: false as const };
       } catch (err) {
         if (err instanceof VaultNotFoundError) {
-          return { settings: null, noteUpdatedAt: null, noteExists: false };
+          return { server: null, serverUpdatedAt: null, noteExists: false as const };
         }
         throw err;
       }
@@ -340,29 +396,41 @@ export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult
   });
 
   // When the fetch lands, reconcile: push a pending dirty local change up, or
-  // accept whatever the server has. Intentionally fires on fresh fetch only —
-  // depending on `entry` would re-fire on every local edit and fight with the
-  // optimistic write path.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reconcile only on a fresh fetch, not on every local state change
+  // accept whatever the server has. Intentionally fires only on a fresh fetch,
+  // not on every local state change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reconcile only on fresh fetch, not on every local state change
   useEffect(() => {
     if (!vaultId || !client || !fetchQuery.data) return;
     const remote = fetchQuery.data;
 
-    // Local changes pending → push our version up. The server's current state
-    // becomes the baseline we PATCH against.
-    if (entry.dirty) {
+    if (entry.dirtyPatch) {
+      // Local changes pending → push our version up. Merge our patch onto the
+      // server's current state so we don't clobber fields another device
+      // touched while we were offline.
+      const patch = entry.dirtyPatch;
       void (async () => {
         try {
-          const result = await writeSettingsToVault(client, entry.settings, {
-            noteUpdatedAt: remote.noteUpdatedAt,
-            noteExists: remote.noteExists,
-          });
-          setEntry(result);
-          saveCachedSettings(vaultId, result);
+          const result = await writeSettingsToVault(
+            client,
+            {
+              serverSettings: remote.server,
+              serverUpdatedAt: remote.serverUpdatedAt,
+              noteExists: remote.noteExists,
+            },
+            patch,
+          );
+          const next: SettingsCacheEntry = {
+            settings: result.server,
+            serverSettings: result.server,
+            serverUpdatedAt: result.serverUpdatedAt,
+            noteExists: true,
+            dirtyPatch: null,
+          };
+          setEntry(next);
+          saveCachedSettings(vaultId, next);
           setStatus("synced");
           qc.invalidateQueries({ queryKey: ["vault-settings", vaultId] });
         } catch {
-          // Still failing — leave dirty, keep current UI state, surface offline.
           setStatus("offline");
         }
       })();
@@ -370,26 +438,26 @@ export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult
     }
 
     // No local pending change — trust the server.
-    const nextEntry: SettingsCacheEntry = remote.settings
+    const nextEntry: SettingsCacheEntry = remote.server
       ? {
-          settings: remote.settings,
-          noteUpdatedAt: remote.noteUpdatedAt,
+          settings: remote.server,
+          serverSettings: remote.server,
+          serverUpdatedAt: remote.serverUpdatedAt,
           noteExists: true,
-          dirty: false,
+          dirtyPatch: null,
         }
       : {
           settings: entry.settings,
-          noteUpdatedAt: null,
+          serverSettings: null,
+          serverUpdatedAt: null,
           noteExists: false,
-          dirty: false,
+          dirtyPatch: null,
         };
     setEntry(nextEntry);
     saveCachedSettings(vaultId, nextEntry);
     setStatus("synced");
   }, [vaultId, client, fetchQuery.data]);
 
-  // Surface error status from the fetch itself (e.g. network failure while
-  // mounted online then going offline).
   useEffect(() => {
     if (fetchQuery.isError) setStatus("offline");
   }, [fetchQuery.isError]);
@@ -397,64 +465,80 @@ export function useVaultSettings(vaultId: string | null): UseVaultSettingsResult
   const update = useCallback(
     async (patch: LensSettingsPatch) => {
       if (!vaultId) return;
-      const next = applySettingsPatch(entry.settings, patch);
+      const nextDirty = mergeSettingsPatches(entry.dirtyPatch, patch);
+      const nextSettings = applySettingsPatch(
+        entry.serverSettings ?? DEFAULT_LENS_SETTINGS,
+        nextDirty,
+      );
 
-      // localStorage write-through is instant; set dirty so we re-push if the
-      // vault call fails.
-      const optimisticEntry: SettingsCacheEntry = {
-        settings: next,
-        noteUpdatedAt: entry.noteUpdatedAt,
+      const optimistic: SettingsCacheEntry = {
+        settings: nextSettings,
+        serverSettings: entry.serverSettings,
+        serverUpdatedAt: entry.serverUpdatedAt,
         noteExists: entry.noteExists,
-        dirty: true,
+        dirtyPatch: nextDirty,
       };
-      setEntry(optimisticEntry);
-      saveCachedSettings(vaultId, optimisticEntry);
+      setEntry(optimistic);
+      saveCachedSettings(vaultId, optimistic);
 
       if (!client) {
         setStatus("offline");
         return;
       }
 
-      const enqueueFallback =
-        db && entry.noteExists
-          ? async () => {
-              // When the note exists but we're offline, queue a PATCH. `force:
-              // true` tells the vault to skip the if_updated_at precondition
-              // — we don't have a reliable baseline once the drain runs later.
-              await enqueue(
-                db,
-                {
-                  kind: "update-note",
-                  targetId: SETTINGS_NOTE_PATH,
-                  payload: { metadata: { lens: next }, force: true },
-                },
-                { vaultId },
-              );
-              // Treat as enqueued from the UI's perspective — cache stays
-              // dirty until the next online fetch reconciles the result.
-              return null as unknown as SettingsCacheEntry;
-            }
-          : null;
+      // When we fall back to the sync queue, we enqueue the ACCUMULATED patch
+      // (not `next`) plus our last-known baseline. The drain handler
+      // re-fetches the note, re-applies the patch onto the latest server
+      // state, and PATCHes with a fresh `if_updated_at`. `force: true` is a
+      // last resort after N merge-retries, not the default.
+      const enqueueFallback = db
+        ? async () => {
+            await enqueue(
+              db,
+              {
+                kind: "update-settings",
+                notePath: SETTINGS_NOTE_PATH,
+                patch: nextDirty,
+                baselineUpdatedAt: entry.serverUpdatedAt,
+              },
+              { vaultId },
+            );
+            return null as unknown as WriteSettingsResult;
+          }
+        : null;
 
       try {
         const result = await withOfflineFallback(
           (signal) =>
             writeSettingsToVault(
               client,
-              next,
-              { noteUpdatedAt: entry.noteUpdatedAt, noteExists: entry.noteExists },
+              {
+                serverSettings: entry.serverSettings,
+                serverUpdatedAt: entry.serverUpdatedAt,
+                noteExists: entry.noteExists,
+              },
+              patch,
               signal,
             ),
           enqueueFallback,
         );
         if (result) {
-          setEntry(result);
-          saveCachedSettings(vaultId, result);
+          const next: SettingsCacheEntry = {
+            settings: result.server,
+            serverSettings: result.server,
+            serverUpdatedAt: result.serverUpdatedAt,
+            noteExists: true,
+            dirtyPatch: null,
+          };
+          setEntry(next);
+          saveCachedSettings(vaultId, next);
           setStatus("synced");
           qc.invalidateQueries({ queryKey: ["vault-settings", vaultId] });
         } else {
-          // Enqueued — leave dirty, report offline so UI can surface it.
-          setStatus(isOffline() ? "offline" : "synced");
+          // Enqueued — leave the cache dirty so a subsequent reconcile knows
+          // to try again. `queued` distinguishes "we'll retry via the drain"
+          // from plain "offline" (nothing in the queue).
+          setStatus(isOffline() ? "offline" : "queued");
         }
       } catch (err) {
         if (err instanceof VaultConflictError) {
