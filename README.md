@@ -1,12 +1,12 @@
 # Parachute Notes
 
-The default frontend for [Parachute](https://parachute.computer). Browse, edit, and capture in any [Parachute Vault](https://github.com/ParachuteComputer/parachute-vault), from any device.
+The default frontend for [Parachute](https://parachute.computer). Browse, edit, and capture in any [Parachute Vault](https://github.com/ParachuteComputer/parachute-vault).
 
 Parachute Notes is a static single-page app that speaks directly to your vault over its HTTP API. Point it at any vault URL, do OAuth, and browse, edit, create, and visualize your notes. No opinion about how you organize your vault — just a clear window onto what's there.
 
 ## Status
 
-v1 shipped; v0.2 in progress — offline-capable PWA.
+v1 shipped; v0.2 in progress — offline-capable PWA. Public HTTPS exposure + the mobile-PWA install flow are under active polish for broad launch in the next few weeks. Today's smooth path is desktop-browser-on-localhost after `parachute install notes`.
 
 ## Install Parachute Notes
 
