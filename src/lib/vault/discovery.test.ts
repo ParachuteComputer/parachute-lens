@@ -84,6 +84,9 @@ describe("registerClient", () => {
     expect(call?.[0]).toBe("http://localhost:1940/oauth/register");
     const init = call?.[1] as RequestInit;
     expect(init.method).toBe("POST");
+    // Hub session cookie must reach /oauth/register so hub#199's auto-approve
+    // can skip the consent round-trip when the user is already signed in.
+    expect(init.credentials).toBe("include");
     const body = JSON.parse(init.body as string);
     expect(body.redirect_uris).toEqual(["http://localhost/oauth/callback"]);
     expect(body.client_name).toBe("Parachute Notes");

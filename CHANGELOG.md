@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.12-rc.1 (2026-05-08)
+
+### OAuth / DCR
+
+- **feat(oauth): include credentials on DCR registration so hub session
+  cookie reaches /oauth/register (#106).** Adds `credentials: 'include'`
+  to the `POST /oauth/register` fetch in `src/lib/vault/discovery.ts` so
+  the browser sends the `parachute_hub_session` cookie even when notes is
+  loaded from a different origin than the hub (e.g. notes on a cloudflare
+  URL registering at a tailnet hub). Companion to hub#199 (hub-side
+  auto-approve) and agent#140 (sibling fix on agent's SPA). No-op until
+  hub#199 ships; completes the loop the moment it does.
+
 ## 0.3.11 (2026-05-05)
 
 First `@latest` publish since launch (`0.3.0`). Bundles every change merged
