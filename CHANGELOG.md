@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.12-rc.1 (2026-05-08)
+
+### OAuth / DCR
+
+- **feat(oauth): include credentials on DCR registration so hub session
+  cookie reaches /oauth/register (#106).** Adds `credentials: 'include'`
+  to the `POST /oauth/register` fetch in `src/lib/vault/discovery.ts` so
+  the browser sends the `parachute_hub_session` cookie when registering.
+  Companion to hub#199 (hub-side auto-approve) and agent#140 (sibling
+  fix on agent's SPA).
+
+  **Scope:** Same-origin auto-approve (notes loaded at `<hub>/notes/` →
+  DCR at `<hub>/oauth/register`) activates as soon as hub#199/200 lands.
+  Cross-origin auto-approve (e.g. notes on a cloudflare URL → hub on
+  tailnet) does NOT work yet — it requires hub-side CORS with
+  `Access-Control-Allow-Credentials`, a first-party origin allowlist, and
+  a `SameSite` relaxation or alternative credential, tracked at
+  parachute-hub#201. Until that lands, cross-origin DCR continues to
+  register as `pending` and requires manual `parachute auth approve-client`.
+
 ## 0.3.11 (2026-05-05)
 
 First `@latest` publish since launch (`0.3.0`). Bundles every change merged

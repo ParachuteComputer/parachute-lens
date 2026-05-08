@@ -54,6 +54,22 @@ export async function registerClient(
   const res = await fetchImpl(registrationEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
+    // Send the hub session cookie (`parachute_hub_session`) on DCR so
+    // hub-side auto-approve (parachute-hub#199) can skip the consent
+    // round-trip when the user is already signed in. This works today for
+    // the same-origin case (notes loaded at <hub>/notes/ → DCR at
+    // <hub>/oauth/register; the cookie would actually be sent by default,
+    // but setting `'include'` is harmless and explicit).
+    //
+    // Cross-origin auto-approve (notes via cloudflare URL → hub via
+    // tailnet, etc.) does NOT work yet: it needs hub-side CORS with
+    // `Access-Control-Allow-Credentials`, a first-party origin allowlist,
+    // and either a `SameSite` relaxation or an alternative credential —
+    // tracked at parachute-hub#201. Including credentials here is
+    // forward-compat: it's a no-op until that hub work lands and activates
+    // the moment it does. CSRF protection lives on the hub side via
+    // Origin/Referer match.
+    credentials: "include",
     body: JSON.stringify({
       client_name: "Parachute Notes",
       redirect_uris: [redirectUri],
