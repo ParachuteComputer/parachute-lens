@@ -6,5 +6,6 @@
   "kind": "frontend",
   "port": 1942,
   "paths": ["/notes"],
+  "uiUrl": "/notes",
   "health": "/notes/health"
 }
