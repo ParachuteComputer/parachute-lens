@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.13-rc.1 (2026-05-10)
+
+### Module manifest
+
+- **docs(module): declare `uiUrl: "/notes"` per
+  [`patterns/module-ui-declaration.md`](https://github.com/ParachuteComputer/parachute-patterns/blob/main/patterns/module-ui-declaration.md).**
+  Lets hub render the Notes discovery tile dynamically from the
+  well-known doc instead of from its hardcoded `SERVICE_LABELS` map.
+  No runtime change in Notes itself; the field is opaque to the PWA.
+
 ## 0.3.12 (2026-05-09)
 
 ### OAuth / DCR
