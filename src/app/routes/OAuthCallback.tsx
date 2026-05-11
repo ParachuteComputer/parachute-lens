@@ -1,4 +1,5 @@
 import {
+  PendingApprovalError,
   completeOAuth,
   saveServicesCatalog,
   storedFromTokenResponse,
@@ -9,7 +10,10 @@ import { useAuthHaltStore } from "@/lib/vault/auth-halt-store";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
-type Status = { kind: "working" } | { kind: "error"; message: string };
+type Status =
+  | { kind: "working" }
+  | { kind: "error"; message: string }
+  | { kind: "pending-approval"; approveUrl?: string; cliAlternative?: string };
 
 export function OAuthCallback() {
   const [params] = useSearchParams();
@@ -59,6 +63,14 @@ export function OAuthCallback() {
         useAuthHaltStore.getState().clearHalt(id);
         navigate("/", { replace: true });
       } catch (err) {
+        if (err instanceof PendingApprovalError) {
+          setStatus({
+            kind: "pending-approval",
+            approveUrl: err.approveUrl,
+            cliAlternative: err.cliAlternative,
+          });
+          return;
+        }
         setStatus({ kind: "error", message: (err as Error).message });
       }
     })();
@@ -67,26 +79,68 @@ export function OAuthCallback() {
   // Prevent Biome warning; vaultIdFromUrl is used elsewhere but re-exported via store.
   void vaultIdFromUrl;
 
-  return (
-    <div className="mx-auto max-w-xl px-6 py-24 text-center">
-      {status.kind === "working" ? (
-        <>
-          <h1 className="mb-3 font-serif text-3xl">Connecting…</h1>
-          <p className="text-fg-muted">Exchanging the authorization code with your vault.</p>
-        </>
-      ) : (
-        <>
-          <h1 className="mb-3 font-serif text-3xl text-red-400">Connection failed</h1>
-          <p className="mb-8 text-fg-muted">{status.message}</p>
+  if (status.kind === "working") {
+    return (
+      <div className="mx-auto max-w-xl px-6 py-24 text-center">
+        <h1 className="mb-3 font-serif text-3xl">Connecting…</h1>
+        <p className="text-fg-muted">Exchanging the authorization code with your vault.</p>
+      </div>
+    );
+  }
+
+  if (status.kind === "pending-approval") {
+    return (
+      <div className="mx-auto max-w-xl px-6 py-24 text-center">
+        <h1 className="mb-3 font-serif text-3xl">Waiting for hub approval</h1>
+        <p className="mb-8 text-fg-muted">
+          Your hub admin needs to approve this app before sign-in can complete.
+          {status.approveUrl
+            ? " Open the approval page in your hub, approve, then try again."
+            : null}
+        </p>
+        {status.approveUrl ? (
+          <a
+            href={status.approveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover"
+          >
+            Open approval page
+          </a>
+        ) : null}
+        {status.cliAlternative ? (
+          <p className="mt-6 text-sm text-fg-muted">
+            Or run{" "}
+            <code className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-xs">
+              {status.cliAlternative}
+            </code>{" "}
+            from a terminal on the hub.
+          </p>
+        ) : null}
+        <div className="mt-8">
           <button
             type="button"
             onClick={() => navigate("/add", { replace: true })}
-            className="rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover"
+            className="text-sm text-fg-muted underline hover:text-fg"
           >
             Try again
           </button>
-        </>
-      )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-xl px-6 py-24 text-center">
+      <h1 className="mb-3 font-serif text-3xl text-red-400">Connection failed</h1>
+      <p className="mb-8 text-fg-muted">{status.message}</p>
+      <button
+        type="button"
+        onClick={() => navigate("/add", { replace: true })}
+        className="rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover"
+      >
+        Try again
+      </button>
     </div>
   );
 }

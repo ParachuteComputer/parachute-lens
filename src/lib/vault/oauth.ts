@@ -92,6 +92,55 @@ export async function beginOAuth(
   return { authorizeUrl: authorizeUrl.toString(), pending };
 }
 
+function parsePendingApproval(
+  text: string,
+): { approveUrl?: string; cliAlternative?: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const body = parsed as Record<string, unknown>;
+  if (body.error !== "invalid_client") return null;
+  const approveUrl = typeof body.approve_url === "string" ? body.approve_url : undefined;
+  const cliAlternative =
+    typeof body.cli_alternative === "string" ? body.cli_alternative : undefined;
+  // Only treat this as a pending-approval response when the hub provides at
+  // least one actionability hint — otherwise an unrelated `invalid_client`
+  // error (bad client_id, revoked client) would get swallowed into the
+  // friendly "needs approval" UI.
+  if (!approveUrl && !cliAlternative) return null;
+  return { approveUrl, cliAlternative };
+}
+
+/**
+ * Thrown by `completeOAuth` when the token endpoint answers with
+ * `error: "invalid_client"` for a client that's registered but pending
+ * operator approval (hub#74 / hub#240). Carries the actionability hints
+ * the hub now includes alongside the OAuth error so the UI can render a
+ * one-click "approve in hub" path instead of a raw CLI message:
+ *
+ *   - `approveUrl` — hub-served SPA route (`/admin/approve-client/<id>`)
+ *     the operator can open to approve the client inline. Same-origin to
+ *     the hub. Absent on pre-#240 hubs.
+ *   - `cliAlternative` — the `parachute auth approve-client <id>` shell
+ *     command, retained as a fallback for terminal-comfortable operators
+ *     or when `approveUrl` isn't present.
+ */
+export class PendingApprovalError extends Error {
+  readonly approveUrl?: string;
+  readonly cliAlternative?: string;
+
+  constructor(approveUrl: string | undefined, cliAlternative: string | undefined) {
+    super("Your hub needs to approve this app before sign-in can complete.");
+    this.name = "PendingApprovalError";
+    this.approveUrl = approveUrl;
+    this.cliAlternative = cliAlternative;
+  }
+}
+
 /**
  * Complete the OAuth flow: verify state, POST the auth code + PKCE verifier to
  * the token endpoint, clear pending state.
@@ -130,6 +179,10 @@ export async function completeOAuth(
   if (!res.ok) {
     const text = await res.text();
     clearPendingOAuth();
+    const pendingApproval = parsePendingApproval(text);
+    if (pendingApproval) {
+      throw new PendingApprovalError(pendingApproval.approveUrl, pendingApproval.cliAlternative);
+    }
     throw new Error(`Token exchange failed (${res.status}): ${text}`);
   }
 

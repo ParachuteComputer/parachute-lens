@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.14-rc.1 (2026-05-11)
+
+### OAuth pending-approval UX
+
+- **feat(oauth): consume hub's `approve_url` field from the
+  pending-approval response.** When `/oauth/token` answers with
+  `error: "invalid_client"` and the hub#240 hint fields
+  (`approve_url`, `cli_alternative`), `completeOAuth` now throws a
+  typed `PendingApprovalError` instead of folding the raw JSON into a
+  generic "Token exchange failed" string. The `OAuthCallback` route
+  renders a dedicated "Waiting for hub approval" screen with a
+  one-click "Open approval page" link (the hub's
+  `/admin/approve-client/<id>` SPA route) plus the
+  `parachute auth approve-client …` CLI as a secondary path.
+  Back-compat: pre-#240 hubs that emit only `cli_alternative` still
+  surface the friendly screen with the CLI fallback alone; an
+  `invalid_client` response with no hint fields (unknown client_id,
+  revoked client) falls through to the generic error UI rather than
+  getting swallowed into the approval flow.
+
 ## 0.3.13 (2026-05-10)
 
 ### Module manifest
