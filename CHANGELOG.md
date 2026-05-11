@@ -18,7 +18,10 @@
   surface the friendly screen with the CLI fallback alone; an
   `invalid_client` response with no hint fields (unknown client_id,
   revoked client) falls through to the generic error UI rather than
-  getting swallowed into the approval flow.
+  getting swallowed into the approval flow. Defense-in-depth: only
+  `http(s)` `approve_url` schemes make it to the rendered `href` —
+  any other scheme (`javascript:`, malformed) is dropped at parse
+  time, with the CLI alternative still surfaced if present.
 
 ## 0.3.13 (2026-05-10)
 

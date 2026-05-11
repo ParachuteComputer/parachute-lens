@@ -92,6 +92,23 @@ export async function beginOAuth(
   return { authorizeUrl: authorizeUrl.toString(), pending };
 }
 
+// Defense-in-depth: only render http(s) approve_urls. Even though the hub
+// is in the trust boundary (the user pointed Notes at it), a malformed or
+// hostile `javascript:` URL must never make it to a React `href` —
+// stripping non-http(s) schemes here guarantees the UI can't accidentally
+// surface one.
+function safeApproveUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.length === 0) return undefined;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return undefined;
+  return raw;
+}
+
 function parsePendingApproval(
   text: string,
 ): { approveUrl?: string; cliAlternative?: string } | null {
@@ -104,7 +121,7 @@ function parsePendingApproval(
   if (typeof parsed !== "object" || parsed === null) return null;
   const body = parsed as Record<string, unknown>;
   if (body.error !== "invalid_client") return null;
-  const approveUrl = typeof body.approve_url === "string" ? body.approve_url : undefined;
+  const approveUrl = safeApproveUrl(body.approve_url);
   const cliAlternative =
     typeof body.cli_alternative === "string" ? body.cli_alternative : undefined;
   // Only treat this as a pending-approval response when the hub provides at

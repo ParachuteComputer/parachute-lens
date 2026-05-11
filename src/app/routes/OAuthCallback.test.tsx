@@ -70,7 +70,8 @@ describe("OAuthCallback pending-approval rendering", () => {
     const link = await screen.findByRole("link", { name: /open approval page/i });
     expect(link).toHaveAttribute("href", approveUrl);
     expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    // Pinned exactly so a future edit dropping noreferrer fails loud.
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.getByText(/your hub admin needs to approve this app/i)).toBeInTheDocument();
     // CLI alternative is shown as the secondary path.
     expect(screen.getByText(/parachute auth approve-client client-123/)).toBeInTheDocument();

@@ -269,6 +269,85 @@ describe("completeOAuth", () => {
     expect(e.cliAlternative).toBe("parachute auth approve-client client-123");
   });
 
+  it("strips non-http(s) approve_url schemes (javascript: defense-in-depth)", async () => {
+    // A hostile or malformed hub must not be able to land a `javascript:`
+    // URL in a React `href`. The scheme allowlist drops it; if a
+    // cli_alternative is also present, the friendly screen still renders
+    // with the CLI fallback alone.
+    savePendingOAuth(pending);
+    const fetchImpl = mockFetch([
+      {
+        ok: false,
+        status: 401,
+        text: JSON.stringify({
+          error: "invalid_client",
+          error_description: "client pending approval",
+          approve_url: "javascript:alert(1)",
+          cli_alternative: "parachute auth approve-client client-123",
+        }),
+      },
+    ]);
+    let caught: unknown;
+    try {
+      await completeOAuth("auth-code", "state-xyz", fetchImpl);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(PendingApprovalError);
+    const e = caught as PendingApprovalError;
+    expect(e.approveUrl).toBeUndefined();
+    expect(e.cliAlternative).toBe("parachute auth approve-client client-123");
+  });
+
+  it("preserves https approve_url and drops it if scheme is unparseable", async () => {
+    // Trust boundary is at the hub-pointing decision, not at the URL
+    // contents — any https URL the hub returns is rendered. An unparseable
+    // string is dropped via the URL constructor catch.
+    savePendingOAuth(pending);
+    const httpsCase = mockFetch([
+      {
+        ok: false,
+        status: 401,
+        text: JSON.stringify({
+          error: "invalid_client",
+          error_description: "client pending approval",
+          approve_url: "https://evil.example/.malicious/path",
+          cli_alternative: "parachute auth approve-client client-123",
+        }),
+      },
+    ]);
+    let httpsCaught: unknown;
+    try {
+      await completeOAuth("auth-code", "state-xyz", httpsCase);
+    } catch (err) {
+      httpsCaught = err;
+    }
+    expect((httpsCaught as PendingApprovalError).approveUrl).toBe(
+      "https://evil.example/.malicious/path",
+    );
+
+    savePendingOAuth(pending);
+    const garbageCase = mockFetch([
+      {
+        ok: false,
+        status: 401,
+        text: JSON.stringify({
+          error: "invalid_client",
+          error_description: "client pending approval",
+          approve_url: "not a url at all",
+          cli_alternative: "parachute auth approve-client client-123",
+        }),
+      },
+    ]);
+    let garbageCaught: unknown;
+    try {
+      await completeOAuth("auth-code", "state-xyz", garbageCase);
+    } catch (err) {
+      garbageCaught = err;
+    }
+    expect((garbageCaught as PendingApprovalError).approveUrl).toBeUndefined();
+  });
+
   it("falls back to the generic error when invalid_client lacks both hint fields", async () => {
     // A bare `invalid_client` (e.g. unknown client_id, revoked client) is a
     // distinct error family from pending-approval — shouldn't get swallowed

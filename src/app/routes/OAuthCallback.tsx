@@ -123,7 +123,7 @@ export function OAuthCallback() {
             onClick={() => navigate("/add", { replace: true })}
             className="text-sm text-fg-muted underline hover:text-fg"
           >
-            Try again
+            Back to connect
           </button>
         </div>
       </div>
