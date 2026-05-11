@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.14-rc.1 (2026-05-11)
+## 0.3.14 (2026-05-11)
 
 ### OAuth pending-approval UX
 
