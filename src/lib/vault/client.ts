@@ -32,7 +32,17 @@ export interface VaultClientOptions {
   // when `onAuthError` returned null because that path is expected to record
   // its own halt with a more specific reason (see refresh.ts).
   onAuthRevoked?: (status: number) => void;
+  // Fires on every fetch outcome with a coarse reachability signal so an
+  // owner store (reachability-store.ts) can run its `healthy → retrying → down`
+  // state machine in one place. Receives "healthy" on any 2xx/4xx response
+  // (the vault answered — auth/conflict/not-found are still reachable),
+  // "unreachable" on 5xx + network failures (gone / mid-restart / proxy down).
+  // Side-effect free here; all hysteresis, backoff, and UI promotion lives in
+  // the store.
+  onReachability?: (signal: ReachabilitySignal, reason?: string) => void;
 }
+
+export type ReachabilitySignal = "healthy" | "unreachable";
 
 export interface StorageUploadResult {
   path: string;
@@ -65,6 +75,21 @@ export class VaultNotFoundError extends Error {
   constructor(message = "Not found") {
     super(message);
     this.name = "VaultNotFoundError";
+  }
+}
+
+// Thrown when the vault is unreachable — 5xx from the server (502/503/504,
+// usually the hub proxy reporting the vault is down or mid-restart) or a
+// network-level failure (ECONNREFUSED, DNS failure, fetch TypeError). The
+// reachability store reads this to flip a per-vault state machine and pause
+// React Query retries while down (see QueryProvider). `status` is 0 for
+// network-level errors that never produced a response.
+export class VaultUnreachableError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "VaultUnreachableError";
+    this.status = status;
   }
 }
 
@@ -124,6 +149,7 @@ export class VaultClient {
   private readonly xhrFactory: () => XMLHttpRequest;
   private readonly onAuthError?: () => Promise<string | null>;
   private readonly onAuthRevoked?: (status: number) => void;
+  private readonly onReachability?: (signal: ReachabilitySignal, reason?: string) => void;
 
   constructor(opts: VaultClientOptions) {
     this.baseUrl = opts.vaultUrl.replace(/\/$/, "");
@@ -132,6 +158,7 @@ export class VaultClient {
     this.xhrFactory = opts.xhrFactory ?? (() => new XMLHttpRequest());
     this.onAuthError = opts.onAuthError;
     this.onAuthRevoked = opts.onAuthRevoked;
+    this.onReachability = opts.onReachability;
   }
 
   get vaultBaseUrl(): string {
@@ -154,7 +181,37 @@ export class VaultClient {
       headers.set("Content-Type", "application/json");
     }
 
-    const res = await this.fetchImpl(`${this.baseUrl}${path}`, { ...init, headers });
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl}${path}`, { ...init, headers });
+    } catch (err) {
+      // Network-level failure: ECONNREFUSED, DNS failure, fetch TypeError,
+      // CORS pre-flight reject. The vault is unreachable from the browser's
+      // perspective; surface it as such and let the reachability store decide
+      // when to promote to "down". Don't swallow AbortError — that's a caller
+      // (offline-fallback timer, useEffect cleanup) deliberately cancelling.
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      this.onReachability?.("unreachable", message);
+      throw new VaultUnreachableError(`${init.method ?? "GET"} ${path} failed: ${message}`, 0);
+    }
+
+    // 5xx = the server (or the hub fronting it) responded with a failure that
+    // isn't auth or our request shape — usually "vault not running" /
+    // "mid-restart" / "proxy upstream timeout". Treat as unreachable;
+    // VaultUnreachableError so React Query can skip retries once the store
+    // crosses its threshold.
+    if (res.status >= 500) {
+      this.onReachability?.("unreachable", `HTTP ${res.status}`);
+      throw new VaultUnreachableError(
+        `${init.method ?? "GET"} ${path} → ${res.status}`,
+        res.status,
+      );
+    }
+
+    // Any non-5xx response means the vault is talking to us — even auth
+    // failures or 404s — so reset the reachability counter.
+    this.onReachability?.("healthy");
 
     if (res.status === 401 || res.status === 403) {
       if (allowRetry && this.onAuthError) {
@@ -379,9 +436,22 @@ export class VaultClient {
     originalUrl: string,
     allowRetry: boolean,
   ): Promise<Blob> {
-    const res = await this.fetchImpl(target, {
-      headers: { Authorization: `Bearer ${this.token}` },
-    });
+    let res: Response;
+    try {
+      res = await this.fetchImpl(target, {
+        headers: { Authorization: `Bearer ${this.token}` },
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      const message = err instanceof Error ? err.message : String(err);
+      this.onReachability?.("unreachable", message);
+      throw new VaultUnreachableError(`GET ${originalUrl} failed: ${message}`, 0);
+    }
+    if (res.status >= 500) {
+      this.onReachability?.("unreachable", `HTTP ${res.status}`);
+      throw new VaultUnreachableError(`GET ${originalUrl} → ${res.status}`, res.status);
+    }
+    this.onReachability?.("healthy");
     if (res.status === 401 || res.status === 403) {
       if (allowRetry && this.onAuthError) {
         const fresh = await this.onAuthError();

@@ -902,3 +902,96 @@ describe("VaultClient default fetch binding", () => {
     }
   });
 });
+
+describe("VaultClient reachability", () => {
+  it("throws VaultUnreachableError on 502 and reports unreachable", async () => {
+    const fetchImpl = mockFetch({ ok: false, status: 502, text: "Bad Gateway" });
+    const onReachability = vi.fn();
+    const client = new (await import("./client")).VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+      onReachability,
+    });
+    await expect(client.vaultInfo()).rejects.toMatchObject({
+      name: "VaultUnreachableError",
+      status: 502,
+    });
+    expect(onReachability).toHaveBeenCalledWith("unreachable", "HTTP 502");
+  });
+
+  it("throws VaultUnreachableError on 503 and reports unreachable", async () => {
+    const fetchImpl = mockFetch({ ok: false, status: 503 });
+    const onReachability = vi.fn();
+    const client = new (await import("./client")).VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+      onReachability,
+    });
+    await expect(client.vaultInfo()).rejects.toMatchObject({
+      name: "VaultUnreachableError",
+      status: 503,
+    });
+    expect(onReachability).toHaveBeenCalledWith("unreachable", "HTTP 503");
+  });
+
+  it("throws VaultUnreachableError on network-level failure (TypeError)", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const onReachability = vi.fn();
+    const client = new (await import("./client")).VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+      onReachability,
+    });
+    await expect(client.vaultInfo()).rejects.toMatchObject({
+      name: "VaultUnreachableError",
+      status: 0,
+    });
+    expect(onReachability).toHaveBeenCalledWith("unreachable", "Failed to fetch");
+  });
+
+  it("does not swallow AbortError from the caller", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      throw new DOMException("aborted", "AbortError");
+    });
+    const onReachability = vi.fn();
+    const client = new (await import("./client")).VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+      onReachability,
+    });
+    await expect(client.vaultInfo()).rejects.toMatchObject({ name: "AbortError" });
+    expect(onReachability).not.toHaveBeenCalled();
+  });
+
+  it("reports healthy on a 200 response", async () => {
+    const fetchImpl = mockFetch({ json: { name: "default", description: "" } });
+    const onReachability = vi.fn();
+    const client = new (await import("./client")).VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+      onReachability,
+    });
+    await client.vaultInfo(false);
+    expect(onReachability).toHaveBeenCalledWith("healthy");
+  });
+
+  it("reports healthy on a 4xx response — the vault is answering", async () => {
+    const fetchImpl = mockFetch({ ok: false, status: 404 });
+    const onReachability = vi.fn();
+    const client = new (await import("./client")).VaultClient({
+      vaultUrl: "http://localhost:1940",
+      accessToken: "pvt_abc",
+      fetchImpl,
+      onReachability,
+    });
+    await expect(client.vaultInfo()).rejects.toMatchObject({ name: "VaultNotFoundError" });
+    expect(onReachability).toHaveBeenCalledWith("healthy");
+  });
+});
