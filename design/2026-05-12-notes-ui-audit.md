@@ -119,7 +119,8 @@ active vault at a time:
 - **`useActiveVaultClient()`** (`src/lib/vault/queries.ts:21-37`). One
   client at a time; no way to query a non-active vault in the
   background (e.g. "captures across all vaults").
-- **`useVaultStore.getActiveVault()` is read in 113 places.** Every
+- **`useVaultStore.getActiveVault()` has 17 direct call sites and
+  `useVaultStore` is touched across dozens of components.** Every
   route gates on active vault. No route takes a `vault` parameter;
   the URL never carries the vault.
 - **URLs aren't vault-scoped.** `/n/abc123` works if and only if
@@ -177,9 +178,12 @@ prompt says "you have four vaults — want to connect them all?"
 ### Hub's vault-list endpoint
 
 The hub already publishes `GET /.well-known/parachute.json` — public,
-CORS-open (`Access-Control-Allow-Origin: *`), no Bearer required.
+no Bearer required. Same-origin in standard installs (Notes lives at
+`/notes/` on the hub origin); `Access-Control-Allow-Origin: *` covers
+cross-origin deployments (e.g. Tailscale funnel with split mount).
 Returns a `vaults: []` array of `{ name, url, version, managementUrl? }`
-per `parachute-hub/src/well-known.ts:35-54`. The hub admin SPA itself
+per the `WellKnownVaultEntry` interface at
+`parachute-hub/src/well-known.ts:11-22`. The hub admin SPA itself
 uses this endpoint at `parachute-hub/web/ui/src/lib/api.ts:69-92`. Notes
 can call it against any hub URL and get the operator-visible vault list.
 
@@ -187,6 +191,15 @@ Caveat: operator-visible vaults are not the same as *user-accessible*
 vaults — the well-known list returns all vaults regardless of OAuth
 identity. The hub will gatekeep at consent, so the worst case is a
 friendly "this hub doesn't think you can access that vault" on click.
+
+**Open implementation question — hub origin discovery.** The popover
+needs to know which hub URL to fetch `/.well-known/parachute.json`
+against. Today `VaultRecord` stores the hub URL as `issuer` (captured
+at OAuth time, visible at `OAuthCallback.tsx:54`), but it isn't
+surfaced as a clean "hub origin" field for non-OAuth uses. Phase 2
+either derives the hub origin from `issuer` or stores it as a distinct
+field at connect time. Flagging here; design call lands with the
+popover PR.
 
 ### Design proposal: where the vault picker lives
 
@@ -236,9 +249,13 @@ If the new vault has no stored token (popover "Connect" click on an
 unconnected vault), Notes runs OAuth against the hub for that vault.
 Worth confirming with the hub steward whether `/oauth/authorize`
 honours a `vault=<name>` hint to pre-select on the consent screen.
-`beginOAuth` (`src/lib/vault/oauth.ts:43-93`) would need a small
-`params: Record<string,string>` options bag added to pass it through.
-Worst case if hub ignores it: consent screen renders the picker as today.
+`beginOAuth` (`src/lib/vault/oauth.ts:43-93`) builds the authorize
+URL as the last step after DCR + metadata discovery — adding the
+hint is a URL-decoration on `authorizeUrl.searchParams`, not a
+structural change. Plumb a small `params: Record<string,string>`
+options bag through and append at the last step. Cheaper than it
+sounds. Worst case if hub ignores the hint: consent screen renders
+the picker as today.
 
 ### URL routing — vault name in the URL?
 
@@ -377,6 +394,12 @@ abstraction. Concrete implications for each big choice in §3:
   dynamically read at point of use. Rename `useSurfaceSettings(vaultId)`,
   broaden the schema, and the pattern scales. Notes already made a
   good architectural decision here; preserve and extend it.
+  - Note for the renaming PR: the underlying type is `LensSettings`
+    (`src/lib/vault/settings.ts:28`), residue from the brief
+    Notes→Lens rename. The hook rename should be a coordinated
+    migration — hook → type → the `metadata.notes` stored key — not
+    just a name change at the surface. The legacy `lens` storage path
+    fallback is intentional and stays.
 
 ### Comments on the open questions from the surface-direction doc
 
