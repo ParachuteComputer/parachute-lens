@@ -563,6 +563,312 @@ describe("Capture (unified)", () => {
   });
 });
 
+describe("Capture — More fields panel (path + summary overrides)", () => {
+  let restoreOnline: (() => void) | null = null;
+
+  beforeEach(async () => {
+    const db = await freshDb();
+    db.close();
+    localStorage.clear();
+    useVaultStore.setState({ vaults: {}, activeVaultId: null });
+    useToastStore.setState({ toasts: [] });
+    seedStore();
+    fakeState.controller = null;
+    fakeState.pickResult = "audio/webm;codecs=opus";
+    fakeState.requestMic = vi.fn(async () => ({ getTracks: () => [] }) as unknown as MediaStream);
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: vi.fn(() => "blob:fake"),
+        revokeObjectURL: vi.fn(),
+      }),
+    );
+    const desc = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    restoreOnline = () => {
+      if (desc) Object.defineProperty(navigator, "onLine", desc);
+    };
+  });
+  afterEach(() => {
+    restoreOnline?.();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("More fields disclosure is collapsed by default", async () => {
+    renderAt("/capture");
+    await waitForReady();
+    // The Path input lives inside <details>; jsdom keeps it in the DOM, but
+    // the parent's `open` attribute is what governs visibility. Assert on
+    // the attribute so we test the actual behavior, not a CSS detail.
+    const summary = screen.getByText(/^more fields$/i);
+    const details = summary.closest("details");
+    expect(details).toBeTruthy();
+    expect(details?.open).toBe(false);
+  });
+
+  it("Path override → enqueued create-note carries `path`; tags + content unchanged", async () => {
+    renderAt("/capture");
+    await waitForReady();
+
+    // Open the disclosure first — jsdom doesn't dispatch toggle on click of
+    // the summary alone (it's a quirk), so set the open prop directly via
+    // the user-facing affordance.
+    const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
+    await act(async () => {
+      detailsEl.open = true;
+      detailsEl.dispatchEvent(new Event("toggle"));
+    });
+
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+    const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    const summaryInput = screen.getByLabelText(/^summary$/i) as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "lab notes #wip" } });
+      fireEvent.change(pathInput, { target: { value: "Daily/2026-05-12" } });
+      fireEvent.change(summaryInput, { target: { value: "first pass" } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^capture$/i }));
+    });
+
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    });
+
+    const db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    expect(rows.length).toBe(1);
+    if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
+    const payload = rows[0].mutation.payload;
+    expect(payload.path).toBe("Daily/2026-05-12");
+    expect(payload.metadata).toEqual({ summary: "first pass" });
+    expect(payload.tags).toEqual(["quick", "wip"]);
+    expect(payload.content).toBe("lab notes #wip");
+    db.close();
+  });
+
+  it("Empty path override → payload omits `path` (vault auto-assigns)", async () => {
+    renderAt("/capture");
+    await waitForReady();
+    const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
+    await act(async () => {
+      detailsEl.open = true;
+      detailsEl.dispatchEvent(new Event("toggle"));
+    });
+
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+    const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "no path here" } });
+      // Whitespace-only is treated as empty per the trim().
+      fireEvent.change(pathInput, { target: { value: "   " } });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^capture$/i }));
+    });
+
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    });
+
+    const db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
+    expect(rows[0].mutation.payload.path).toBeUndefined();
+    expect(rows[0].mutation.payload.metadata).toBeUndefined();
+    db.close();
+  });
+
+  it("Path override wins over the audio-only memo path", async () => {
+    renderAt("/capture");
+    await waitForReady();
+    const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
+    await act(async () => {
+      detailsEl.open = true;
+      detailsEl.dispatchEvent(new Event("toggle"));
+    });
+
+    // Set path override BEFORE recording so it sticks through the save flow.
+    const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(pathInput, { target: { value: "Recordings/2026/may" } });
+    });
+
+    // Record audio only (no text).
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: /hold to record/i }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /recording/i })).toBeInTheDocument();
+    });
+    await act(async () => {
+      releasePointer();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/recorded /i)).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^capture$/i }));
+    });
+
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.tone === "success")).toBe(true);
+    });
+    const db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    const create = rows.find((r) => r.mutation.kind === "create-note")!;
+    if (create.mutation.kind !== "create-note") throw new Error("expected create-note");
+    expect(create.mutation.payload.path).toBe("Recordings/2026/may");
+    db.close();
+  });
+});
+
+describe("Capture — inactivity autosave (5s)", () => {
+  let restoreOnline: (() => void) | null = null;
+
+  beforeEach(async () => {
+    const db = await freshDb();
+    db.close();
+    localStorage.clear();
+    useVaultStore.setState({ vaults: {}, activeVaultId: null });
+    useToastStore.setState({ toasts: [] });
+    seedStore();
+    fakeState.controller = null;
+    fakeState.pickResult = "audio/webm;codecs=opus";
+    fakeState.requestMic = vi.fn(async () => ({ getTracks: () => [] }) as unknown as MediaStream);
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: vi.fn(() => "blob:fake"),
+        revokeObjectURL: vi.fn(),
+      }),
+    );
+    const desc = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    restoreOnline = () => {
+      if (desc) Object.defineProperty(navigator, "onLine", desc);
+    };
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    restoreOnline?.();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("typing + 5s of inactivity fires save()", async () => {
+    renderAt("/capture");
+    await waitForReady();
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "auto-saved thought" } });
+    });
+
+    // Advance just under the 5s threshold — should NOT have saved yet.
+    await act(async () => {
+      vi.advanceTimersByTime(4_000);
+    });
+    let db = await openLensDB();
+    expect((await listPending(db, "dev")).length).toBe(0);
+    db.close();
+
+    // Cross the threshold.
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    });
+    db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    expect(rows.length).toBe(1);
+    if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
+    expect(rows[0].mutation.payload.content).toBe("auto-saved thought");
+    db.close();
+  });
+
+  it("further edits within the 5s window reset the timer", async () => {
+    renderAt("/capture");
+    await waitForReady();
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "first" } });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(4_000);
+    });
+    // Edit again before the timer fires — counter should restart.
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "first plus more" } });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(4_500);
+    });
+    // 8.5s elapsed, but only 4.5s since the last keystroke — should NOT have
+    // saved yet.
+    let db = await openLensDB();
+    expect((await listPending(db, "dev")).length).toBe(0);
+    db.close();
+
+    // Cross the 5s window from the last edit.
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    });
+    db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
+    expect(rows[0].mutation.payload.content).toBe("first plus more");
+    db.close();
+  });
+
+  it("empty content → autosave does NOT fire", async () => {
+    renderAt("/capture");
+    await waitForReady();
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    const db = await openLensDB();
+    expect((await listPending(db, "dev")).length).toBe(0);
+    db.close();
+  });
+
+  it("staged audio suppresses autosave (manual Capture click only)", async () => {
+    renderAt("/capture");
+    await waitForReady();
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "with audio attached" } });
+    });
+    // Record + release so phase enters `have-audio`.
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: /hold to record/i }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /recording/i })).toBeInTheDocument();
+    });
+    await act(async () => {
+      releasePointer();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/recorded /i)).toBeInTheDocument();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    const db = await openLensDB();
+    expect((await listPending(db, "dev")).length).toBe(0);
+    db.close();
+  });
+});
+
 describe("extractHashtags", () => {
   it("pulls #tag tokens from prose and dedups them", () => {
     expect(extractHashtags("got an #idea today and another #idea")).toEqual(["idea"]);

@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+### Capture polish + view-level text-size
+
+- **feat(ui): unified capture surface refinements + view-level text-size
+  control (0.3.15-rc.6).** Two items from `design/2026-05-12-notes-ui-audit.md`
+  §3 (north-star "Apple-Notes-grade ease"): #12 (unified capture) and
+  #11 (text-size knob). Both behind one PR per the audit's sequencing.
+  - **More fields panel (audit §3 #12).** Adds a collapsible
+    `<details>` to `Capture` exposing a path override + summary input —
+    the audit's "structured form when wanted, hidden when not". Defaults
+    to closed so the textarea stays the unfocused-friction default;
+    operators who need to set an explicit path (e.g. capturing into
+    `Daily/2026-05-12`) get the form without leaving Capture. Empty
+    path means "let the vault auto-assign"; empty summary means "no
+    metadata.summary". Path override wins over the audio-only memo
+    auto-path.
+  - **Inactivity autosave (audit §3 #12).** Capture now flushes
+    save() after 5 seconds of editing inactivity in addition to the
+    existing unmount-flush — protects against browser crashes and
+    accidental closes. Skipped while audio is staged (manual Capture
+    click only), while recording/saving, and while body is empty.
+  - **Escape hatch to NoteNew.** A "Need to attach a file? Open the
+    full editor" link in the More-fields panel points at `/new`, which
+    still renders `NoteNew` for the file-drop / file-picker /
+    `link-on-create` flow. Capture is canonical for the 95% quick path;
+    the heavy editor stays available for the 5% that needs attachments.
+    Cmd+K keeps both entries for discoverability.
+  - **View-level text-size knob (audit §3 #11).** New `lib/text-size.ts`
+    mirrors `lib/theme.ts` shape — three steps (Default / Larger /
+    Largest), per-device localStorage at `notes:textSize`, applied via
+    a `data-text-size` attribute on `<html>`. `styles/index.css`
+    defines `--font-size-prose` + `--font-size-editor` CSS variables;
+    `.prose-note` reads the prose one (markdown reader), `CodeMirror`
+    reads the editor one. Settings gains a `TextSizeSection` with
+    three radio buttons that apply + persist in one motion. Markdown
+    on disk is unaffected — pure view preference.
+  - **Tests.** 4 new in `text-size.test.ts` (round-trip, default
+    handling, data-attribute application, labels). 8 new in
+    `Capture.test.tsx` covering disclosure default-closed, path/summary
+    override payload shape, empty-path fallback, path-override winning
+    over memo auto-path, autosave-after-5s, edit-resets-timer,
+    empty-content-no-autosave, audio-staged-suppresses-autosave.
+  - **Unmount-flush hardening.** The unmount enqueue now swallows IDB
+    teardown rejections (SyncProvider closing its handle in the same
+    tick is a known race documented in `SyncProvider.tsx:60`). No
+    user-visible surface to report failures during nav-away anyway.
+
 ### Multi-vault hubs — consume per-vault services keys
 
 - **feat(oauth): prefer `services["vault:<name>"].url` in OAuthCallback

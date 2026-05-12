@@ -1,5 +1,13 @@
 import { PATH_TREE_MODES, type PathTreeMode, usePathTreeMode } from "@/lib/path-tree";
 import { isStandalone } from "@/lib/pwa";
+import {
+  TEXT_SIZES,
+  type TextSize,
+  applyTextSize,
+  readStoredTextSize,
+  textSizeLabel,
+  writeStoredTextSize,
+} from "@/lib/text-size";
 import { useToastStore } from "@/lib/toast/store";
 import {
   DEFAULT_TAG_ROLES,
@@ -33,10 +41,55 @@ export function Settings() {
         </p>
       </header>
 
+      <TextSizeSection />
       <PathTreeSection vaultId={activeVault.id} />
       <TagRolesSection vaultId={activeVault.id} />
       <InstallStateSection />
     </div>
+  );
+}
+
+// View-level text-size knob — per-device because eye-days vary independently
+// of vault. The dropdown applies + persists in one motion via the helpers in
+// lib/text-size.ts; App.tsx already applies the stored value on mount, so
+// this section's job is just "change + save".
+function TextSizeSection() {
+  const [size, setSize] = useState<TextSize>("default");
+  useEffect(() => {
+    setSize(readStoredTextSize());
+  }, []);
+
+  const onChange = (next: TextSize) => {
+    setSize(next);
+    writeStoredTextSize(next);
+    applyTextSize(next);
+  };
+
+  return (
+    <section className="mt-6 space-y-4 rounded-xl border border-border bg-card p-6">
+      <div>
+        <h2 className="font-serif text-xl text-fg">Text size</h2>
+        <p className="mt-1 text-xs text-fg-dim">
+          Affects the editor and rendered notes on this device. Your markdown isn't changed.
+        </p>
+      </div>
+      <fieldset className="space-y-2">
+        <legend className="sr-only">View text size</legend>
+        {TEXT_SIZES.map((s) => (
+          <label key={s} className="flex items-start gap-2 text-sm">
+            <input
+              type="radio"
+              name="text-size"
+              value={s}
+              checked={size === s}
+              onChange={() => onChange(s)}
+              className="mt-1 accent-accent"
+            />
+            <span className="text-fg">{textSizeLabel(s)}</span>
+          </label>
+        ))}
+      </fieldset>
+    </section>
   );
 }
 

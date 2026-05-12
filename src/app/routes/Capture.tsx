@@ -13,7 +13,7 @@ import { useToastStore } from "@/lib/toast/store";
 import { useTagRoles, useVaultStore } from "@/lib/vault";
 import { useSync } from "@/providers/SyncProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate } from "react-router";
+import { Link, Navigate } from "react-router";
 
 // Unified single-screen capture. The user can type, hold-to-record, or do
 // both — submit writes one note tagged for whichever inputs were used.
@@ -62,7 +62,9 @@ function formatElapsed(ms: number): string {
   return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
 }
 
-export function Capture() {
+export function Capture({
+  moreFieldsOpenDefault = false,
+}: { moreFieldsOpenDefault?: boolean } = {}) {
   const activeVault = useVaultStore((s) => s.getActiveVault());
   const pushToast = useToastStore((s) => s.push);
   const { db, blobStore, engine } = useSync();
@@ -71,6 +73,15 @@ export function Capture() {
   const [content, setContent] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  // "More fields" — the audit's escape hatch from the quick-capture default.
+  // Hidden by default so the textarea stays the no-friction focus; an
+  // operator who needs to set an explicit path or one-line summary opens
+  // this and gets the structured form without leaving Capture. Empty path
+  // means "let the vault auto-assign" (the existing behavior); empty summary
+  // means "no metadata.summary" — both inputs are pure overrides.
+  const [moreFieldsOpen, setMoreFieldsOpen] = useState(moreFieldsOpenDefault);
+  const [pathOverride, setPathOverride] = useState("");
+  const [summary, setSummary] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [elapsedMs, setElapsedMs] = useState(0);
 
@@ -188,6 +199,10 @@ export function Capture() {
     setContent("");
     setTags([]);
     setTagInput("");
+    // Don't clear pathOverride / summary — the user opened "More fields"
+    // deliberately and may be capturing multiple notes into the same path
+    // (e.g. "Daily/2026-05-12"). They can close the panel or clear the
+    // inputs themselves; resetting silently every time would be surprising.
     discardAudio();
     textareaRef.current?.focus();
   }, [discardAudio]);
@@ -217,6 +232,13 @@ export function Capture() {
 
     const localId = newLocalId();
 
+    // "More fields" overrides: trim once here so empty-after-trim values
+    // don't end up as `path: ""` (vault would reject) or
+    // `metadata.summary: ""` (worthless metadata noise).
+    const pathOverrideValue = pathOverride.trim();
+    const summaryValue = summary.trim();
+    const metadata = summaryValue ? { summary: summaryValue } : undefined;
+
     try {
       if (audio) {
         // Voice-bearing note. If the user typed too, keep their body verbatim
@@ -229,7 +251,11 @@ export function Capture() {
         const body = hasText
           ? `${content.trim()}\n\n_Transcript pending._\n\n![[${filename}]]\n`
           : `_Transcript pending._\n\n![[${filename}]]\n`;
-        const path = hasText ? undefined : memoPath(recordedAt);
+        // Path precedence: explicit override > audio-only memo path > let
+        // the vault auto-assign. Override wins on every shape so the user
+        // can place an audio note anywhere they want, including the typed
+        // case (where today we'd let the vault pick).
+        const path = pathOverrideValue || (hasText ? undefined : memoPath(recordedAt));
 
         if (!blobStore) throw new Error("blob store missing");
         await blobStore.put(blobId, audio.data, audio.mimeType, activeVault.id);
@@ -242,6 +268,7 @@ export function Capture() {
               content: body,
               ...(path ? { path } : {}),
               ...(finalTags.length ? { tags: finalTags } : {}),
+              ...(metadata ? { metadata } : {}),
             },
           },
           { vaultId: activeVault.id },
@@ -276,7 +303,9 @@ export function Capture() {
             localId,
             payload: {
               content,
+              ...(pathOverrideValue ? { path: pathOverrideValue } : {}),
               ...(finalTags.length ? { tags: finalTags } : {}),
+              ...(metadata ? { metadata } : {}),
             },
           },
           { vaultId: activeVault.id },
@@ -315,6 +344,8 @@ export function Capture() {
     hasText,
     tags,
     content,
+    pathOverride,
+    summary,
     roles.captureText,
     roles.captureVoice,
     engine,
@@ -340,12 +371,28 @@ export function Capture() {
   // savingRef is checked here so a teardown that fires in the same tick as a
   // Capture click (user hits Capture and immediately navigates) sees that
   // save() is already in flight and bails — otherwise we'd enqueue twice.
-  const latest = useRef({ db, activeVaultId: activeVault?.id ?? null, content, tags, roles });
-  latest.current = { db, activeVaultId: activeVault?.id ?? null, content, tags, roles };
+  const latest = useRef({
+    db,
+    activeVaultId: activeVault?.id ?? null,
+    content,
+    tags,
+    pathOverride,
+    summary,
+    roles,
+  });
+  latest.current = {
+    db,
+    activeVaultId: activeVault?.id ?? null,
+    content,
+    tags,
+    pathOverride,
+    summary,
+    roles,
+  };
   useEffect(() => {
     return () => {
       if (savingRef.current) return;
-      const { db, activeVaultId, content, tags, roles } = latest.current;
+      const { db, activeVaultId, content, tags, pathOverride, summary, roles } = latest.current;
       const text = content.trim();
       if (!text || !db || !activeVaultId) return;
       const explicit = tags.filter((t) => t.length > 0);
@@ -353,20 +400,60 @@ export function Capture() {
       const all = Array.from(
         new Set([roles.captureText, ...explicit, ...extracted].filter((t) => t.length > 0)),
       );
-      void enqueue(
+      const pathValue = pathOverride.trim();
+      const summaryValue = summary.trim();
+      // Swallow rejections here — we're in the unmount path, so there's no
+      // user-visible surface to report a failure (the toaster has already
+      // been torn down with the providers). The typical failure mode in
+      // tests is the SyncProvider closing its IDB handle in the same tick;
+      // in production the queue is more durable. Either way, no UI to
+      // notify.
+      enqueue(
         db,
         {
           kind: "create-note",
           localId: newLocalId(),
           payload: {
             content,
+            ...(pathValue ? { path: pathValue } : {}),
             ...(all.length ? { tags: all } : {}),
+            ...(summaryValue ? { metadata: { summary: summaryValue } } : {}),
           },
         },
         { vaultId: activeVaultId },
-      );
+      ).catch(() => {
+        // best-effort flush on nav-away
+      });
     };
   }, []);
+
+  // Inactivity autosave (5s) — fires save() after the user stops editing for
+  // 5 seconds so a long-typed note isn't lost to a browser crash or accidental
+  // close. Skipped while audio is staged (saving with attachment is the user's
+  // explicit Capture-click decision), while recording/saving (mid-state), and
+  // while body is empty (nothing to save). The timer resets on every content,
+  // tags, path, or summary change. Hardcoded 5s per the brief — short enough
+  // to feel snappy on long sessions, long enough not to spam the queue on
+  // every keystroke. Cleanup cancels any in-flight timer on unmount so we
+  // don't race the unmount-flush.
+  //
+  // `tags`, `pathOverride`, `summary` are intentional debounce triggers — a
+  // change in any of them must reset this 5s timer so autosave fires 5s
+  // after the LAST edit, not 5s after the last content edit only. They're
+  // read by save() via its own closure (hence Biome can't see them used).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  useEffect(() => {
+    if (phase.kind === "recording" || phase.kind === "requesting" || phase.kind === "saving") {
+      return;
+    }
+    if (phase.kind === "have-audio") return;
+    if (!hasText) return;
+    const id = setTimeout(() => {
+      if (savingRef.current) return;
+      void save();
+    }, 5000);
+    return () => clearTimeout(id);
+  }, [phase.kind, hasText, content, tags, pathOverride, summary, save]);
 
   if (!activeVault) return <Navigate to="/" replace />;
 
@@ -435,6 +522,47 @@ export function Capture() {
           }}
           onRemove={(name) => setTags((prev) => prev.filter((x) => x !== name))}
         />
+
+        <details
+          className="group rounded-md border border-border bg-bg/50"
+          open={moreFieldsOpen}
+          onToggle={(e) => setMoreFieldsOpen((e.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary className="cursor-pointer select-none px-3 py-2 text-xs text-fg-muted hover:text-accent">
+            More fields
+          </summary>
+          <div className="space-y-3 px-3 pb-3 pt-1">
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-fg-dim">Path</span>
+              <input
+                type="text"
+                value={pathOverride}
+                onChange={(e) => setPathOverride(e.target.value)}
+                placeholder="(blank → vault auto-assigns)"
+                aria-label="Path override"
+                className="rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-fg focus:border-accent focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs">
+              <span className="text-fg-dim">Summary</span>
+              <input
+                type="text"
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                placeholder="(optional one-line description)"
+                aria-label="Summary"
+                className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-fg focus:border-accent focus:outline-none"
+              />
+            </label>
+            <p className="text-xs text-fg-dim">
+              Need to attach a file?{" "}
+              <Link to="/new" className="text-accent hover:underline">
+                Open the full editor
+              </Link>
+              .
+            </p>
+          </div>
+        </details>
 
         <div className="flex items-center justify-between gap-3 pt-2">
           <MicButton
