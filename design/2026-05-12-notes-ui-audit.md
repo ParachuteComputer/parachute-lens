@@ -13,6 +13,28 @@ help the user pick *which* vault on a multi-vault hub, and (2) a broader
 "good look over the Notes UI" in the context of the
 [surface-direction research](../../parachute-patterns/research/parachute-surface-direction.md).
 
+## North star (Aaron's framing, 2026-05-12)
+
+Notes should serve as **a real notes-app replacement** for someone
+migrating off Apple Notes or Obsidian. The aim:
+
+- **As easy as Apple Notes** — open the app, start typing, friction
+  near zero. Autosave invisible. Sync invisible. No "set up your
+  vault" before you can write the first thing.
+- **As flexible as Obsidian-ish** — wikilinks, tag schemas, structured
+  metadata, multi-pane reading, surface-aware customization (Tag
+  Roles today, more later).
+- **Parachute-shaped** — anchored in vault primitives (notes / tags /
+  links / attachments). Per-vault customization is the
+  differentiating axis (an Obsidian user opens one vault and gets
+  one workspace; a Parachute user might run four with distinct
+  identities and stay in the same UI). The surface direction is the
+  long-term frame.
+
+The audit + sequencing below are read against this north star —
+"does this make Notes a credible Apple-Notes replacement?" is a
+load-bearing question for every improvement candidate.
+
 Section 1 inventories what Notes is today. §2 zooms into the
 vault-selector gap. §3 critiques the broader UI. §4 looks at all of it
 through the surface-direction lens. §5 is the recommendation.
@@ -340,6 +362,47 @@ Move them to CSS variables read from `useVaultSettings`. First knob:
 instantly distinguishable. Wiring is trivial; value compounds when
 surface-direction lands.
 
+### 11. View-level text-size control. S, medium leverage.
+
+A simple zoom knob — "Default / Larger / Largest" — affecting font-size
+on the editor + read views. **Crucially: a view preference, not a
+content preference.** The markdown on disk is untouched; the operator
+just sees bigger text while typing or reading. Stored per-device in
+`localStorage` (most ergonomic — different devices, different eye
+days), with an optional per-vault default via `useVaultSettings`. UI
+shape: small dropdown in Settings or a one-click stepper in the
+header. Apple Notes has this as a system-wide gesture; Notes should
+match the affordance because operators expect it.
+
+### 12. Unify capture surfaces — one entry, smart defaults. M, **high leverage.**
+
+Today there are three creation paths: `/new` (full NoteForm),
+TextCapture (`src/lib/capture/`, the quick text route), and
+MemoCapture (voice). They're separate routes with separate component
+trees and overlapping logic. Aaron's directive: **collapse the
+duality.** One create-or-edit interface where the "quick" experience
+is just the same surface with default-filled values:
+
+- Title: auto-generated (timestamp + first line, or empty if both).
+- Tags: defaulted per the `captureText` / `captureVoice` role (already
+  per-vault via Tag Roles — see §1).
+- Path: defaulted to vault-default (currently "Notes/" or similar
+  per-vault convention).
+- Body: the focused element; cursor lands there on entry.
+- "More fields" affordance: collapsible structured form (per item #9)
+  for path/tags overrides when wanted, hidden when not.
+
+The "quick" feel is preserved by what's visible by default — a big
+text area, autosave, no friction. The "long-typed" feel is the same
+surface with the form expanded. **Removing the duality removes
+duplicated code, reduces decision friction for the operator, and
+unifies how Tag Roles flow through capture.**
+
+MemoCapture stays distinct because the *input modality* is different
+(microphone → upload → transcription) — but once recording stops, it
+hands off to the unified create surface with the audio attached. So
+even voice-capture lands in the same edit surface, not a parallel one.
+
 ### Considered and discarded
 
 - Activity-feed-as-landing (defer; big mental-model shift, no clear win).
@@ -447,25 +510,38 @@ vault-management affordances). Scope: S (a day).
 
 ### Suggested sequencing for the broader audit
 
+Reordered 2026-05-12 to weight Aaron's north-star framing — Apple-Notes-
+grade ease, Obsidian-flex, Parachute-shape — alongside the named gap.
+Authoring ease is now ranked higher than chrome refinement: someone
+migrating from Apple Notes will judge the app by how it feels to type
+in it on day one.
+
 1. **Vault popover** (§3 item #1). S. The named gap.
-2. **Empty-state copy + connection-error banner** (§3 items #6, #7).
-   S each. Small footprint, big "this app feels like it works"
-   payoff. Bundle into one PR.
-3. **Top-level search bar + header reshape** (§3 items #2, #3).
+2. **Unified create flow** (§3 item #12). M. Collapse the
+   capture/new-note duality. **High leverage for the Apple-Notes-
+   replacement framing** — every operator who opens the app to "just
+   write something" hits this surface first.
+3. **View-level text-size control** (§3 item #11). S. The "match Apple
+   Notes' affordance" piece. Cheap to ship alongside #2 if the unified
+   surface PR is open anyway.
+4. **Empty-state copy + connection-error banner** (§3 items #6, #7).
+   S each. Polish pass on "this app feels like it works."
+5. **Top-level search bar + header reshape** (§3 items #2, #3).
    M combined. Bigger chrome change; do it once the popover proves
    the right place for vault chrome to live.
-4. **Per-tab vault state** (§3 item #4). M. Foundation work. Pairs
-   well with #5.
-5. **Vault-in-URL** (§2 Option B). M. Deep-link parity.
-6. **Surface-aware theming** (§3 item #10). M. First real
+6. **Per-tab vault state** (§3 item #4). M. Foundation work. Pairs
+   well with #7.
+7. **Vault-in-URL** (§2 Option B). M. Deep-link parity.
+8. **Surface-aware theming** (§3 item #10). M. First real
    "Notes-as-configured" knob. Strategic, not tactical.
-7. **Unified create flow + authoring polish** (§3 items #5, #9). M.
-   Quality-of-life.
+9. **Authoring polish — structured form** (§3 item #9). M.
+   Quality-of-life on top of the unified surface.
 
 That sequence treats §2 (specific gap) as the immediate win,
-§3 items #6/#7 as a thank-you-card pass, then steps that progressively
-de-bespoke Notes toward "first instance of the surface abstraction"
-without committing to that frame.
+unified-capture as the next high-leverage authoring fix, polish in the
+middle, then steps that progressively de-bespoke Notes toward
+"first instance of the surface abstraction" without committing to
+that frame.
 
 ### Things Aaron should weigh before approving the next PR
 
