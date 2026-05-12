@@ -1,6 +1,7 @@
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 import type { QueueStatus } from "@/lib/sync";
 import { useVaultStore } from "@/lib/vault";
+import { useVaultReachabilityStore } from "@/lib/vault/reachability-store";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -144,6 +145,25 @@ describe("SyncStatusIndicator tone", () => {
     });
     renderIndicator();
     expect(screen.getByRole("button", { name: /sync status: reconnect/i })).toBeInTheDocument();
+  });
+
+  it("reads 'Vault down' when reachability state is down (above offline)", () => {
+    const store = useVaultReachabilityStore.getState();
+    store.reportSignal("v", "unreachable", "boom");
+    store.reportSignal("v", "unreachable", "boom");
+    store.reportSignal("v", "unreachable", "boom");
+    mockSync.mockReturnValue({
+      db: null,
+      blobStore: null,
+      engine: null,
+      isOnline: false,
+      isDraining: false,
+      lastSyncedAt: null,
+    });
+    renderIndicator();
+    expect(screen.getByRole("button", { name: /sync status: vault down/i })).toBeInTheDocument();
+    // Cleanup so we don't leak state into the next test.
+    useVaultReachabilityStore.setState({ byVault: {} });
   });
 });
 

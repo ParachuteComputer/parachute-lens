@@ -13,6 +13,7 @@ import {
   VaultClient,
 } from "./client";
 import { type NoteQueryState, buildNoteQueryParams } from "./note-query";
+import { useVaultReachabilityStore } from "./reachability-store";
 import { forceRefresh } from "./refresh";
 import { loadToken } from "./storage";
 import { useVaultStore } from "./store";
@@ -33,6 +34,8 @@ export function useActiveVaultClient(): VaultClient | null {
         useAuthHaltStore
           .getState()
           .markHalted(activeId, `Vault rejected the current session (${status}).`),
+      onReachability: (signal, reason) =>
+        useVaultReachabilityStore.getState().reportSignal(activeId, signal, reason),
     });
   }, [vault, activeId]);
 }

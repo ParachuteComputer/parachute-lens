@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+### Graceful vault-unreachable UX
+
+- **feat(ui): banner + status dot + retry backoff when vault is unreachable
+  (0.3.15-rc.2).** Replaces the raw 502 / blank-screen + console-error
+  behaviour Aaron hit after a Mac restart left vault un-started (notes#113).
+  - **`VaultUnreachableError`** distinguishes 5xx and network-level failures
+    (ECONNREFUSED, DNS, fetch TypeError) from auth/conflict/not-found in
+    `VaultClient.request()`. Auth-halt and 4xx errors still mean the vault
+    *answered*, so they don't touch reachability state.
+  - **`useVaultReachabilityStore`** runs the per-vault state machine
+    `healthy → retrying → down`. Promotion to `down` after 3 consecutive
+    failures (or an immediate `ECONNREFUSED`). Exponential backoff for the
+    recovery probe: 1s → 2s → 4s → 8s → 16s → 30s (cap matches the sync
+    engine tick). Not persisted to localStorage — unlike auth-halt, this
+    state should re-probe from scratch on reload.
+  - **`useReachabilityProbe`** schedules a single `setTimeout` per active
+    vault, pings `GET /api/vault` at `nextProbeAt`, and on success the
+    client's own `onReachability("healthy")` flush clears the store. Probe
+    auto-invalidates `notes`/`tags`/`vaultInfo`/`note` query keys so cached
+    data refreshes on recovery.
+  - **`VaultStatusBanner`** (renamed from `ReconnectBanner`) covers both
+    failure axes with one component: auth-halt has precedence over
+    unreachable (different recovery paths — re-OAuth vs wait/retry). The
+    unreachable banner offers `Retry now` (forces a probe + invalidates
+    queries) and `Dismiss` (one-shot escape hatch via `resetToHealthy`).
+    Local-vault operator hint (`Try `parachute start vault``) is shown
+    only for loopback / `.local` URLs.
+  - **`SyncStatusIndicator`** gains a 5th tone `unreachable` ("Vault down",
+    `bg-red-400`). Precedence: `halted → unreachable → offline → syncing →
+    online`. Auth-halt still wins; unreachable beats `navigator.onLine`
+    because it points at a more specific recovery.
+  - **`QueryProvider` retry policy** pauses React Query retries on
+    `VaultUnreachableError` once the store crosses `down` — this is what
+    stops the `/api/notes` 404 hammering in the vault log (every list/get
+    call legitimately hits `/api/notes?...`; nothing was stopping React
+    Query from retrying twice per query forever). While still `retrying`
+    (≤2 failures) one retry is allowed so a single blip self-heals
+    without ever showing the banner.
+  - **Tests.** `client.test.ts` adds 502/503/TypeError/AbortError mappings
+    and the `healthy` reset on 4xx. `reachability-store.test.ts` covers
+    the full state machine + backoff index growth + per-vault isolation.
+    `VaultStatusBanner.test.tsx` covers both modes, the auth-halt-wins
+    precedence, the loopback hint, the Retry/Dismiss buttons, and
+    `isLoopbackOrLocal`. `SyncStatusIndicator.test.tsx` adds the
+    `Vault down` tone test (above offline in precedence).
+
 ### Vault popover (header)
 
 - **feat(ui): vault popover + hub-discovery + OAuth `vault=<name>` hint

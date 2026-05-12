@@ -1,11 +1,13 @@
 import { BottomTabBar } from "@/components/BottomTabBar";
 import { Header } from "@/components/Header";
 import { QuickSwitchMount } from "@/components/QuickSwitchMount";
-import { ReconnectBanner } from "@/components/ReconnectBanner";
 import { Toaster } from "@/components/Toaster";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { VaultStatusBanner } from "@/components/VaultStatusBanner";
 import { useVaultStore } from "@/lib/vault";
 import { useCrossTabVaultSync } from "@/lib/vault/cross-tab-sync";
+import { useActiveVaultClient } from "@/lib/vault/queries";
+import { useReachabilityProbe } from "@/lib/vault/reachability-probe";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { SyncProvider } from "@/providers/SyncProvider";
 import { Suspense, lazy } from "react";
@@ -78,6 +80,16 @@ function NoteIdRedirect({ suffix = "" }: { suffix?: string }) {
   return <Navigate to={`/n/${encodeURIComponent(id)}${suffix}`} replace />;
 }
 
+// Mounted under SyncProvider (which is under QueryProvider) so the
+// reachability probe can use both `useQueryClient` and `useActiveVaultClient`.
+// Renders no DOM — purely effects.
+function ReachabilityProbeMount() {
+  const activeId = useVaultStore((s) => s.activeVaultId);
+  const client = useActiveVaultClient();
+  useReachabilityProbe(activeId, client);
+  return null;
+}
+
 export function App() {
   // Wired at the app root (not a provider) so the storage-event listener
   // outlives every route transition. Same vault state surfaces in every tab
@@ -86,11 +98,12 @@ export function App() {
   return (
     <QueryProvider>
       <SyncProvider>
+        <ReachabilityProbeMount />
         <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}>
           <div className="min-h-dvh overflow-x-hidden bg-bg text-fg pb-16 md:pb-0">
             <Toaster />
             <UpdateBanner />
-            <ReconnectBanner />
+            <VaultStatusBanner />
             <Header />
             <QuickSwitchMount />
             <main>

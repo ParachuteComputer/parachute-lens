@@ -10,6 +10,7 @@ import {
 import { relativeTime } from "@/lib/time";
 import { useToastStore } from "@/lib/toast/store";
 import { useVaultStore } from "@/lib/vault";
+import { useVaultReachabilityStore } from "@/lib/vault/reachability-store";
 import { useSync } from "@/providers/SyncProvider";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
@@ -40,6 +41,9 @@ export function SyncStatusPanel({ onDismiss }: { onDismiss?: () => void }) {
   const status = useQueueStatus(db, activeVaultId);
 
   const [quota, setQuota] = useState<{ usage: number; quota: number } | null>(null);
+  const reach = useVaultReachabilityStore((s) =>
+    activeVaultId ? (s.byVault[activeVaultId] ?? null) : null,
+  );
   // Live-tick the "Last synced" relative time without jamming the main render.
   const [, forceTick] = useState(0);
   useEffect(() => {
@@ -60,15 +64,18 @@ export function SyncStatusPanel({ onDismiss }: { onDismiss?: () => void }) {
     };
   }, []);
 
+  const isUnreachable = reach?.state === "down";
   const stateHeadline = status.authHalt
     ? "Reconnect needed"
-    : !isOnline
-      ? "Offline — changes queued"
-      : isDraining
-        ? "Syncing…"
-        : status.total > 0
-          ? "Sync pending"
-          : "All caught up";
+    : isUnreachable
+      ? "Vault not reachable"
+      : !isOnline
+        ? "Offline — changes queued"
+        : isDraining
+          ? "Syncing…"
+          : status.total > 0
+            ? "Sync pending"
+            : "All caught up";
 
   const handleRetry = async (seq: number) => {
     if (!db) return;

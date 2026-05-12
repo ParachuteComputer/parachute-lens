@@ -75,6 +75,10 @@ scribe settings UI, and no direct knowledge of whether transcription is
 configured — that's the vault's concern. If a user wants voice memos with
 transcripts, they configure scribe in the vault once, not per-device.
 
+## `gh` default repo
+
+`gh issue`/`pr` commands resolve the default repo by scanning the cwd's git remotes. This checkout isn't a git repo at the tentacle's cwd (the repo root is `/Users/parachute/ParachuteComputer/parachute-notes`), so `gh` falls back to whichever default it has cached — which on a fresh shell can be wrong (notes#113 design comment landed on `parachute-vault#113` first). Run `gh repo set-default ParachuteComputer/parachute-notes` from the repo root the first time, or pass `-R ParachuteComputer/parachute-notes` on every command. The tentacle should set the default before any `gh issue`/`gh pr` work.
+
 ## Post-merge hygiene
 
 When a PR is merged, locally:

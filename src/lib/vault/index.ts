@@ -11,6 +11,8 @@ export * from "./pinned-tags";
 export * from "./pkce";
 export * from "./probe";
 export * from "./queries";
+export * from "./reachability-probe";
+export * from "./reachability-store";
 export * from "./settings";
 export * from "./storage";
 export * from "./store";

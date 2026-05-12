@@ -3,7 +3,7 @@ import { create } from "zustand";
 // Per-vault "this session is dead, ask the user to reconnect" marker. Set when
 // the hub returns an HTTP error from /oauth/token (refresh token revoked /
 // rotated past us / client deleted) or when a 401 keeps coming back even after
-// a successful refresh attempt. Read by the top-level ReconnectBanner so the
+// a successful refresh attempt. Read by the top-level VaultStatusBanner so the
 // user gets a non-dismissable prompt no matter where in the app they are.
 //
 // Backed by localStorage so the halt survives a reload (otherwise a refresh

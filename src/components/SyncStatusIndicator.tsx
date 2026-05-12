@@ -1,20 +1,26 @@
 import { SyncStatusPanel } from "@/components/SyncStatusPanel";
 import { useQueueStatus } from "@/lib/sync";
 import { useVaultStore } from "@/lib/vault";
+import { useVaultReachabilityStore } from "@/lib/vault/reachability-store";
 import { useSync } from "@/providers/SyncProvider";
 import { useEffect, useRef, useState } from "react";
 
-type Tone = "online" | "offline" | "syncing" | "halted";
+type Tone = "online" | "offline" | "syncing" | "halted" | "unreachable";
 
-// Resolves the most important thing to communicate at a glance. Order matters:
-// auth-halt beats offline beats syncing beats online, because the user's next
-// action depends on the most severe state.
+// Resolves the most important thing to communicate at a glance. Precedence:
+//   halted (auth) → unreachable (vault down) → offline (no network)
+//   → syncing → online.
+// Auth halt beats unreachable because the recovery action differs (re-OAuth
+// vs wait/retry); unreachable beats offline because it points at a more
+// specific recovery (vault, not network) when both flags happen to be set.
 function resolveTone(opts: {
   isOnline: boolean;
   isDraining: boolean;
   authHalt: boolean;
+  unreachable: boolean;
 }): Tone {
   if (opts.authHalt) return "halted";
+  if (opts.unreachable) return "unreachable";
   if (!opts.isOnline) return "offline";
   if (opts.isDraining) return "syncing";
   return "online";
@@ -24,6 +30,9 @@ export function SyncStatusIndicator() {
   const { db, isOnline, isDraining } = useSync();
   const activeVaultId = useVaultStore((s) => s.activeVaultId);
   const status = useQueueStatus(db, activeVaultId);
+  const reach = useVaultReachabilityStore((s) =>
+    activeVaultId ? (s.byVault[activeVaultId] ?? null) : null,
+  );
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -44,6 +53,7 @@ export function SyncStatusIndicator() {
     isOnline,
     isDraining,
     authHalt: status.authHalt !== null,
+    unreachable: reach?.state === "down",
   });
 
   const label = describeTone(tone);
@@ -94,10 +104,16 @@ function describeTone(tone: Tone): string {
       return "Syncing…";
     case "halted":
       return "Reconnect";
+    case "unreachable":
+      return "Vault down";
   }
 }
 
 function Dot({ tone }: { tone: Tone }) {
+  // `unreachable` and `halted` both signal failure but want to be
+  // distinguishable from each other in the popover headline — the dot uses a
+  // slightly lighter red for unreachable so colour-blind users still see the
+  // shared "red = bad" signal.
   const color =
     tone === "online"
       ? "bg-emerald-400"
@@ -105,6 +121,8 @@ function Dot({ tone }: { tone: Tone }) {
         ? "bg-amber-400"
         : tone === "syncing"
           ? "bg-sky-400 animate-pulse"
-          : "bg-red-500";
+          : tone === "unreachable"
+            ? "bg-red-400"
+            : "bg-red-500";
   return <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${color}`} />;
 }
