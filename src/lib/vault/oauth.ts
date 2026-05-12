@@ -31,6 +31,18 @@ export function redirectUriForOrigin(origin: string = window.location.origin): s
   return `${origin.replace(/\/$/, "")}${basePathPrefix()}${REDIRECT_PATH}`;
 }
 
+export interface BeginOAuthOptions {
+  /**
+   * Extra query params appended to the authorize URL after the standard
+   * OAuth + PKCE params. Used for hints the hub may consume (e.g. a
+   * `vault=<name>` pre-selection hint from the Notes vault popover —
+   * design doc 2026-05-12-notes-ui-audit §2). Unknown params are
+   * harmless: a hub that doesn't recognize them ignores them and the
+   * consent screen renders as today.
+   */
+  params?: Record<string, string>;
+}
+
 /**
  * Begin the OAuth 2.1 + PKCE flow against an issuer URL.
  *
@@ -44,6 +56,7 @@ export async function beginOAuth(
   issuerInput: string,
   scope: TokenScope = DEFAULT_SCOPE,
   fetchImpl: typeof fetch = fetch.bind(globalThis),
+  options: BeginOAuthOptions = {},
 ): Promise<{ authorizeUrl: string; pending: PendingOAuthState }> {
   const issuerUrl = normalizeVaultUrl(issuerInput);
   const redirectUri = redirectUriForOrigin();
@@ -88,6 +101,16 @@ export async function beginOAuth(
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
   authorizeUrl.searchParams.set("state", state);
   authorizeUrl.searchParams.set("scope", scope);
+  // Appended last so caller-supplied params never overwrite the OAuth/PKCE
+  // params above. A caller that passes `code_challenge` will see it ignored
+  // — by design.
+  if (options.params) {
+    for (const [key, value] of Object.entries(options.params)) {
+      if (!authorizeUrl.searchParams.has(key)) {
+        authorizeUrl.searchParams.set(key, value);
+      }
+    }
+  }
 
   return { authorizeUrl: authorizeUrl.toString(), pending };
 }

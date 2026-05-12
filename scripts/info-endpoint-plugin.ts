@@ -39,7 +39,10 @@ export function infoEndpointPlugin(options: PluginOptions): Plugin {
   const rootPath = `/${ENDPOINT}`;
 
   function attach(server: ViteDevServer | PreviewServer): void {
-    const handler = (_req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => {
+    const handler = (
+      _req: import("node:http").IncomingMessage,
+      res: import("node:http").ServerResponse,
+    ) => {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache");

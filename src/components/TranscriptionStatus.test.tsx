@@ -9,25 +9,19 @@ describe("TranscriptionStatus", () => {
   });
 
   it("shows 'Transcribing…' when the note still carries the pending marker", () => {
-    render(
-      <TranscriptionStatus content="# 🎙️ Voice memo\n\n_Transcript pending._\n" />,
-    );
+    render(<TranscriptionStatus content="# 🎙️ Voice memo\n\n_Transcript pending._\n" />);
     expect(screen.getByText(/transcribing/i)).toBeInTheDocument();
   });
 
   it("shows the unavailable chip when the note carries the unavailable marker", () => {
     render(
-      <TranscriptionStatus
-        content="Some preamble.\n\n_Transcription unavailable._\n\nrest"
-      />,
+      <TranscriptionStatus content="Some preamble.\n\n_Transcription unavailable._\n\nrest" />,
     );
     expect(screen.getByText(/transcription unavailable/i)).toBeInTheDocument();
   });
 
   it("prefers the pending chip when both markers coexist", () => {
-    render(
-      <TranscriptionStatus content="_Transcript pending._\n_Transcription unavailable._" />,
-    );
+    render(<TranscriptionStatus content="_Transcript pending._\n_Transcription unavailable._" />);
     expect(screen.getByText(/transcribing/i)).toBeInTheDocument();
     expect(screen.queryByText(/transcription unavailable/i)).not.toBeInTheDocument();
   });

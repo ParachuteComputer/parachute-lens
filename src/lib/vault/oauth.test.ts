@@ -99,6 +99,29 @@ describe("beginOAuth", () => {
     expect(pending.clientId).toBe("client-123");
   });
 
+  it("appends caller-supplied `params` to the authorize URL", async () => {
+    const fetchImpl = mockFetch([{ json: validMetadata }, { json: clientReg }]);
+    const { authorizeUrl } = await beginOAuth("http://localhost:1940", "vault:read", fetchImpl, {
+      params: { vault: "techne" },
+    });
+    const url = new URL(authorizeUrl);
+    expect(url.searchParams.get("vault")).toBe("techne");
+    // Standard OAuth/PKCE params still present and unmodified.
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
+  it("never lets `params` overwrite a standard OAuth/PKCE param", async () => {
+    const fetchImpl = mockFetch([{ json: validMetadata }, { json: clientReg }]);
+    const { authorizeUrl } = await beginOAuth("http://localhost:1940", "vault:read", fetchImpl, {
+      params: { response_type: "token", scope: "evil:scope", vault: "techne" },
+    });
+    const url = new URL(authorizeUrl);
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")).toBe("vault:read");
+    expect(url.searchParams.get("vault")).toBe("techne");
+  });
+
   it("re-registers when the redirect URI no longer matches the cache", async () => {
     const first = mockFetch([{ json: validMetadata }, { json: clientReg }]);
     await beginOAuth("http://localhost:1940", "vault:read", first);
