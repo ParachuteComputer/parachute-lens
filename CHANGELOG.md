@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Multi-vault hubs — consume per-vault services keys
+
+- **feat(oauth): prefer `services["vault:<name>"].url` in OAuthCallback
+  (0.3.15-rc.5).** Companion consumer for the hub-side change in
+  hub#247/#248. Hub now emits per-vault entries in the OAuth services
+  catalog alongside the legacy collapsed `vault` key; OAuthCallback
+  picks the entry matching the token's `vault` claim. Before this PR,
+  every vault on a multi-vault hub (boulder, gitcoin, techne) would
+  resolve to the collapsed-first-vault URL, so VaultRecords collided
+  on URL and only one entry survived in Manage Vaults. Fallback chain
+  is per-vault key → collapsed `vault` → `pending.issuerUrl`, so
+  pre-#247 hubs and standalone vaults keep working unchanged. Tests
+  cover all three fallback rungs. Closes notes#121.
+
 ### Retry-now integration test
 
 - **test(ui): integration coverage for Retry-now → real client → store flush
