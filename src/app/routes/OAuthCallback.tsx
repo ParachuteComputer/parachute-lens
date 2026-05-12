@@ -46,7 +46,19 @@ export function OAuthCallback() {
         // hub's vault URL over whatever the user pasted, so a hub login works
         // even if the user typed the hub origin. Standalone-vault tokens have
         // no catalog, in which case the issuer URL itself is the vault URL.
-        const vaultUrl = token.services?.vault?.url ?? pending.issuerUrl;
+        //
+        // Multi-vault hubs (post hub#247/#248) also emit a per-vault key
+        // `vault:<name>` alongside the legacy collapsed `vault` entry. Prefer
+        // the per-vault key when the token's `vault` claim names which one we
+        // OAuthed for — otherwise on a hub fronting boulder + gitcoin + techne
+        // every connect would resolve to the same first-vault URL and the
+        // stored VaultRecords would collide. Pre-#247 hubs (no per-vault keys)
+        // fall through to the collapsed entry.
+        const perVaultKey = token.vault ? `vault:${token.vault}` : undefined;
+        const vaultUrl =
+          (perVaultKey ? token.services?.[perVaultKey]?.url : undefined) ??
+          token.services?.vault?.url ??
+          pending.issuerUrl;
         const id = addVault(
           {
             url: vaultUrl,

@@ -1,5 +1,6 @@
 import { OAuthCallback } from "@/app/routes/OAuthCallback";
 import { savePendingOAuth } from "@/lib/vault/storage";
+import { useVaultStore } from "@/lib/vault/store";
 import type { PendingOAuthState } from "@/lib/vault/types";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -114,5 +115,111 @@ describe("OAuthCallback pending-approval rendering", () => {
       expect(screen.getByText(/connection failed/i)).toBeInTheDocument();
     });
     expect(screen.queryByText(/waiting for hub approval/i)).not.toBeInTheDocument();
+  });
+});
+
+// Mints a successful /oauth/token response with the given catalog + vault
+// claim. Distinct from `mockTokenResponse` above (which always returns a
+// non-ok body) so the success-path tests below get a real exchange.
+function mockSuccessfulTokenResponse(body: {
+  vault: string;
+  services?: Record<string, { url: string; version?: string } | undefined>;
+}) {
+  const payload = {
+    access_token: "tok_test",
+    token_type: "bearer",
+    scope: "vault:read vault:write",
+    vault: body.vault,
+    expires_in: 3600,
+    services: body.services,
+  };
+  const impl = vi.fn<typeof fetch>(async () => {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => payload,
+      text: async () => JSON.stringify(payload),
+    } as Response;
+  });
+  vi.stubGlobal("fetch", impl);
+  return impl;
+}
+
+describe("OAuthCallback vault URL resolution (notes#121)", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+    useVaultStore.setState({ vaults: {}, activeVaultId: null });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    useVaultStore.setState({ vaults: {}, activeVaultId: null });
+  });
+
+  it("uses services['vault:<name>'].url when the per-vault key matches the token's vault claim", async () => {
+    savePendingOAuth(pending);
+    // Hub fronting three vaults — boulder, gitcoin, techne. The token names
+    // boulder; the catalog has per-vault entries for all three plus the
+    // legacy collapsed `vault` pointing at the first. The new resolution
+    // logic should pick boulder, not the collapsed default.
+    mockSuccessfulTokenResponse({
+      vault: "boulder",
+      services: {
+        vault: { url: "http://hub.example/vault/gitcoin" },
+        "vault:boulder": { url: "http://hub.example/vault/boulder" },
+        "vault:gitcoin": { url: "http://hub.example/vault/gitcoin" },
+        "vault:techne": { url: "http://hub.example/vault/techne" },
+      },
+    });
+
+    renderCallback();
+
+    await waitFor(() => {
+      const vaults = Object.values(useVaultStore.getState().vaults);
+      expect(vaults).toHaveLength(1);
+      expect(vaults[0]?.url).toBe("http://hub.example/vault/boulder");
+    });
+  });
+
+  it("falls back to services.vault.url when the per-vault key is missing (single-vault hub)", async () => {
+    savePendingOAuth(pending);
+    // Pre-#247 hub shape (or a single-vault hub on the post-#247 build that
+    // doesn't bother emitting per-vault keys): only the collapsed `vault`
+    // entry exists. The vault claim names "default" but there's no
+    // `vault:default` key — fall through to the collapsed entry.
+    mockSuccessfulTokenResponse({
+      vault: "default",
+      services: {
+        vault: { url: "http://hub.example/vault/default" },
+      },
+    });
+
+    renderCallback();
+
+    await waitFor(() => {
+      const vaults = Object.values(useVaultStore.getState().vaults);
+      expect(vaults).toHaveLength(1);
+      expect(vaults[0]?.url).toBe("http://hub.example/vault/default");
+    });
+  });
+
+  it("falls back to pending.issuerUrl when the token has no services catalog (standalone vault)", async () => {
+    savePendingOAuth(pending);
+    // A standalone vault (no hub fronting it) issues tokens without a
+    // services catalog. URL resolution must fall through both lookups and
+    // land on the issuer URL the user OAuthed against.
+    mockSuccessfulTokenResponse({
+      vault: "default",
+      // services intentionally omitted.
+    });
+
+    renderCallback();
+
+    await waitFor(() => {
+      const vaults = Object.values(useVaultStore.getState().vaults);
+      expect(vaults).toHaveLength(1);
+      expect(vaults[0]?.url).toBe(pending.issuerUrl);
+    });
   });
 });
