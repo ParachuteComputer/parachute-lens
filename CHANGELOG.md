@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Design
+
+- **docs(design): Notes UI audit + vault-selector design proposal**
+  at [`design/2026-05-12-notes-ui-audit.md`](./design/2026-05-12-notes-ui-audit.md).
+  Inventories the current routes, navigation primitives, and primary
+  user flows; designs a vault popover that surfaces the hub's
+  well-known vault list to fix the multi-vault-on-one-hub gap;
+  surfaces ten broader improvement candidates with scope and leverage
+  reads; engages with the surface-direction research note
+  (parachute-patterns#54) on how Notes might evolve as a configured
+  surface instance. No code changes.
+
 ## 0.3.14 (2026-05-11)
 
 ### OAuth pending-approval UX
