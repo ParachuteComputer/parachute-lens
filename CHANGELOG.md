@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Retry-now integration test
+
+- **test(ui): integration coverage for Retry-now → real client → store flush
+  (0.3.15-rc.4).** Adds `VaultStatusBanner.retry.integration.test.tsx`
+  exercising the load-bearing recovery interaction end-to-end through a
+  real `VaultClient` (no `useActiveVaultClient` mock). Three response
+  paths covered: 200 (vault healthy) + 401 (vault answering, still
+  auth-broken) both flush the store and unmount the banner via the real
+  `onReachability("healthy")` callback; 502 keeps the banner up and
+  extends `backoffIndex`. Regression-pins the precedence flow so a
+  future refactor that disconnects the client→store wiring fails this
+  test instead of slipping through. Closes notes#118.
+
 ### LAN-IP vaults get the operator hint
 
 - **fix(ui): RFC 1918 detection in `isLoopbackOrLocal` (0.3.15-rc.3).**
