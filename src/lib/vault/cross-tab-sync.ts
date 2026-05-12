@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { AUTH_HALT_KEY_PREFIX, useAuthHaltStore } from "./auth-halt-store";
-import { ACTIVE_KEY, loadActiveVaultId, loadVaults, VAULTS_KEY } from "./storage";
+import { ACTIVE_KEY, VAULTS_KEY, loadActiveVaultId, loadVaults } from "./storage";
 import { useVaultStore } from "./store";
 
 // Storage events fire across same-origin tabs but never within the tab that

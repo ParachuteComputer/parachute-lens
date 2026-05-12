@@ -1,16 +1,14 @@
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { type VaultRecord, useVaultStore } from "@/lib/vault";
+import { VaultPopover } from "@/components/VaultPopover";
+import { useVaultStore } from "@/lib/vault";
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link, useLocation } from "react-router";
 
 export function Header() {
-  const navigate = useNavigate();
   const location = useLocation();
-  const vaults = useVaultStore((s) => s.vaults);
-  const activeVaultId = useVaultStore((s) => s.activeVaultId);
-  const setActiveVault = useVaultStore((s) => s.setActiveVault);
+  const hasVaults = useVaultStore((s) => Object.keys(s.vaults).length > 0);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Close the mobile menu whenever the route changes — otherwise a tap on a
@@ -19,19 +17,6 @@ export function Header() {
   useEffect(() => {
     setMenuOpen(false);
   }, [location.pathname]);
-
-  const vaultLabel = (v: VaultRecord): string => {
-    if (v.name) return v.name;
-    try {
-      return new URL(v.url).host;
-    } catch {
-      return v.url;
-    }
-  };
-  const vaultList = Object.values(vaults).sort((a, b) =>
-    vaultLabel(a).localeCompare(vaultLabel(b)),
-  );
-  const hasVaults = vaultList.length > 0;
 
   return (
     <header
@@ -65,28 +50,7 @@ export function Header() {
               <Link to="/capture" className="text-sm text-fg-muted hover:text-accent">
                 + Capture
               </Link>
-              <label htmlFor="vault-switcher" className="sr-only">
-                Active vault
-              </label>
-              <select
-                id="vault-switcher"
-                value={activeVaultId ?? ""}
-                onChange={(e) => setActiveVault(e.target.value || null)}
-                className="rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-fg"
-              >
-                {vaultList.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {vaultLabel(v)}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => navigate("/vaults")}
-                className="text-sm text-fg-muted hover:text-accent"
-              >
-                Manage
-              </button>
+              <VaultPopover />
               <Link to="/settings" className="text-sm text-fg-muted hover:text-accent">
                 Settings
               </Link>
@@ -131,27 +95,12 @@ export function Header() {
               <Link to="/activity" className="py-1 text-sm text-fg hover:text-accent">
                 Activity
               </Link>
-              <button
-                type="button"
-                onClick={() => navigate("/vaults")}
-                className="py-1 text-left text-sm text-fg hover:text-accent"
-              >
-                Manage vaults
-              </button>
-              <label className="mt-1 block text-xs text-fg-dim">
-                <span className="mb-1 block uppercase tracking-wider">Active vault</span>
-                <select
-                  value={activeVaultId ?? ""}
-                  onChange={(e) => setActiveVault(e.target.value || null)}
-                  className="w-full rounded-md border border-border bg-card px-2.5 py-2 text-sm text-fg"
-                >
-                  {vaultList.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {vaultLabel(v)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="mt-1">
+                <span className="mb-1 block text-xs uppercase tracking-wider text-fg-dim">
+                  Active vault
+                </span>
+                <VaultPopover variant="inline" />
+              </div>
               <div className="mt-1 flex items-center gap-3">
                 <InstallPrompt />
                 <ThemeToggle />

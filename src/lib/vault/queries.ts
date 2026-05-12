@@ -4,6 +4,7 @@ import { enqueue } from "@/lib/sync/queue";
 import { useSync } from "@/providers/SyncProvider";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useAuthHaltStore } from "./auth-halt-store";
 import {
   type CreateNotePayload,
   type StorageUploadResult,
@@ -11,7 +12,6 @@ import {
   type UploadProgress,
   VaultClient,
 } from "./client";
-import { useAuthHaltStore } from "./auth-halt-store";
 import { type NoteQueryState, buildNoteQueryParams } from "./note-query";
 import { forceRefresh } from "./refresh";
 import { loadToken } from "./storage";

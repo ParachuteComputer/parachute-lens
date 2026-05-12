@@ -2,17 +2,37 @@
 
 ## Unreleased
 
-### Design
+### Vault popover (header)
 
-- **docs(design): Notes UI audit + vault-selector design proposal**
-  at [`design/2026-05-12-notes-ui-audit.md`](./design/2026-05-12-notes-ui-audit.md).
-  Inventories the current routes, navigation primitives, and primary
-  user flows; designs a vault popover that surfaces the hub's
-  well-known vault list to fix the multi-vault-on-one-hub gap;
-  surfaces ten broader improvement candidates with scope and leverage
-  reads; engages with the surface-direction research note
-  (parachute-patterns#54) on how Notes might evolve as a configured
-  surface instance. No code changes.
+- **feat(ui): vault popover + hub-discovery + OAuth `vault=<name>` hint
+  (0.3.15-rc.1).** Replaces the bare `<select>` switcher in the header
+  with a popover that surfaces the operator's full hub-side vault list
+  alongside the locally-connected vaults. Implements §2 of
+  [`design/2026-05-12-notes-ui-audit.md`](./design/2026-05-12-notes-ui-audit.md);
+  the first item in the §5 ship sequence.
+  - **Two sections.** "Connected" lists vaults Notes has tokens for
+    (active vault gets a filled accent dot + "current" tag; the rest
+    are one click to switch). "Available from your hub" lists vaults
+    published at `<hub>/.well-known/parachute.json` that Notes hasn't
+    connected to yet, each with an inline "Connect" button. Footer
+    links to the existing `/vaults` management page.
+  - **Hub-origin discovery.** Derived from `VaultRecord.issuer` (which
+    under hub-as-issuer is the hub origin itself, captured at OAuth
+    time in `OAuthCallback.tsx`) — no schema change to the stored
+    record, no migration. For a standalone-vault deployment the
+    well-known fetch returns no peers and the Available section is
+    omitted (graceful degradation).
+  - **OAuth `vault=<name>` hint (Path A).** `beginOAuth` now accepts an
+    `options.params` bag appended to the authorize URL last, guarded
+    so caller-supplied params can never overwrite standard OAuth/PKCE
+    params. Notes sends `vault=<name>` so future hubs that adopt the
+    hint can pre-select on the consent screen; pre-#240 hubs ignore it
+    and the picker renders as today.
+  - **Mobile.** Same component, rendered as `variant="inline"` inside
+    the existing hamburger menu — replaces the mobile `<select>` plus
+    the standalone "Manage vaults" button.
+
+### Design
 
 ## 0.3.14 (2026-05-11)
 

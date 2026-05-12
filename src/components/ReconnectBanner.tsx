@@ -13,9 +13,7 @@ import { useState } from "react";
 export function ReconnectBanner() {
   const activeVaultId = useVaultStore((s) => s.activeVaultId);
   const vault = useVaultStore((s) => s.getActiveVault());
-  const halt = useAuthHaltStore((s) =>
-    activeVaultId ? (s.byVault[activeVaultId] ?? null) : null,
-  );
+  const halt = useAuthHaltStore((s) => (activeVaultId ? (s.byVault[activeVaultId] ?? null) : null));
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
