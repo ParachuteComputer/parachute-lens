@@ -164,6 +164,13 @@ function UnreachableBanner({ vaultUrl, vaultId }: { vaultUrl: string; vaultId: s
   );
 }
 
+// RFC 1918 private IPv4 ranges. A vault running on a home LAN at e.g.
+// `192.168.1.10:1940` is just as "local" as one on `127.0.0.1` from the
+// operator's perspective — same recovery (start the daemon on their box) —
+// so the banner hint applies. Loopback `127.0.0.0/8` is matched by the
+// explicit `127.0.0.1` check above to keep the regex narrow.
+const RFC_1918_IPV4 = /^(10|192\.168|172\.(1[6-9]|2\d|3[0-1]))\./;
+
 export function isLoopbackOrLocal(urlStr: string): boolean {
   try {
     const u = new URL(urlStr);
@@ -174,6 +181,7 @@ export function isLoopbackOrLocal(urlStr: string): boolean {
     if (host === "127.0.0.1") return true;
     if (host === "::1") return true;
     if (host.endsWith(".local")) return true;
+    if (RFC_1918_IPV4.test(host)) return true;
     return false;
   } catch {
     return false;
