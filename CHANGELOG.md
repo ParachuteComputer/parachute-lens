@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### LAN-IP vaults get the operator hint
+
+- **fix(ui): RFC 1918 detection in `isLoopbackOrLocal` (0.3.15-rc.3).**
+  The banner from rc.2 only showed the `Try `parachute start vault``
+  operator hint for `localhost` / `127.0.0.1` / `.local` URLs, so a
+  self-hosted vault on a home LAN at e.g. `192.168.1.10:1940` got no
+  hint even though the recovery is identical. Adds RFC 1918 private
+  IPv4 range matching (10/8, 172.16-31/12, 192.168/16). Tailnet and
+  cloud vaults remain correctly unaffected. Tests cover all three
+  ranges, the 172.15/172.32 boundary excludes, and public-IP
+  negatives that share a prefix digit. Closes notes#117.
+
 ### Graceful vault-unreachable UX
 
 - **feat(ui): banner + status dot + retry backoff when vault is unreachable

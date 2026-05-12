@@ -155,6 +155,29 @@ describe("isLoopbackOrLocal", () => {
   it("matches .local mDNS hostnames", () => {
     expect(isLoopbackOrLocal("http://my-mac.local:1940")).toBe(true);
   });
+  it("matches RFC 1918 10/8 range", () => {
+    expect(isLoopbackOrLocal("http://10.0.0.1:1940")).toBe(true);
+    expect(isLoopbackOrLocal("http://10.255.255.254:1940")).toBe(true);
+  });
+  it("matches RFC 1918 192.168/16 range", () => {
+    expect(isLoopbackOrLocal("http://192.168.1.10:1940")).toBe(true);
+    expect(isLoopbackOrLocal("http://192.168.255.1:1940")).toBe(true);
+  });
+  it("matches RFC 1918 172.16-31/12 range (boundaries)", () => {
+    expect(isLoopbackOrLocal("http://172.16.0.1:1940")).toBe(true);
+    expect(isLoopbackOrLocal("http://172.20.1.1:1940")).toBe(true);
+    expect(isLoopbackOrLocal("http://172.31.255.254:1940")).toBe(true);
+  });
+  it("excludes 172.15/12 and 172.32/12 — outside the private range", () => {
+    expect(isLoopbackOrLocal("http://172.15.0.1:1940")).toBe(false);
+    expect(isLoopbackOrLocal("http://172.32.0.1:1940")).toBe(false);
+  });
+  it("does not match public IPs that share a prefix digit (1.x, 19.x, 17.x)", () => {
+    expect(isLoopbackOrLocal("http://1.1.1.1:1940")).toBe(false);
+    expect(isLoopbackOrLocal("http://19.0.0.1:1940")).toBe(false);
+    expect(isLoopbackOrLocal("http://17.0.0.1:1940")).toBe(false);
+    expect(isLoopbackOrLocal("http://192.169.0.1:1940")).toBe(false);
+  });
   it("does not match Tailscale-style hostnames", () => {
     expect(isLoopbackOrLocal("https://aaron-vault.tail-scale.ts.net")).toBe(false);
   });
