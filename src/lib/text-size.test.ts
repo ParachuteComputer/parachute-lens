@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TEXT_SIZE_STORAGE_KEY,
   applyTextSize,
+  nextTextSize,
+  previousTextSize,
   readStoredTextSize,
   textSizeLabel,
   writeStoredTextSize,
@@ -52,5 +54,17 @@ describe("text-size", () => {
     expect(textSizeLabel("default")).toBe("Default");
     expect(textSizeLabel("larger")).toBe("Larger");
     expect(textSizeLabel("largest")).toBe("Largest");
+  });
+
+  it("nextTextSize cycles default → larger → largest → default", () => {
+    expect(nextTextSize("default")).toBe("larger");
+    expect(nextTextSize("larger")).toBe("largest");
+    expect(nextTextSize("largest")).toBe("default");
+  });
+
+  it("previousTextSize cycles default → largest → larger → default", () => {
+    expect(previousTextSize("default")).toBe("largest");
+    expect(previousTextSize("largest")).toBe("larger");
+    expect(previousTextSize("larger")).toBe("default");
   });
 });

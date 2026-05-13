@@ -207,6 +207,23 @@ export function memoPath(at: Date = new Date()): string {
   return `Memos/${yyyy}/${mm}-${dd}/${hh}-${mi}-${ss}`;
 }
 
+// Path for a typed quick-capture note. Mirrors `memoPath()`'s shape on
+// purpose so a vault's `Memos/2026/05-12/14-30-15` and
+// `Notes/2026/05-12/14-30-15` group side-by-side and read as parallel
+// concepts. Pre-#126 Notes passed `path: undefined` to the vault which
+// auto-assigned server-side; surfacing this here moves the generation
+// rule into Notes (where it belongs) and lets the operator see + edit
+// the value before save.
+export function quickPath(at: Date = new Date()): string {
+  const yyyy = at.getFullYear();
+  const mm = String(at.getMonth() + 1).padStart(2, "0");
+  const dd = String(at.getDate()).padStart(2, "0");
+  const hh = String(at.getHours()).padStart(2, "0");
+  const mi = String(at.getMinutes()).padStart(2, "0");
+  const ss = String(at.getSeconds()).padStart(2, "0");
+  return `Notes/${yyyy}/${mm}-${dd}/${hh}-${mi}-${ss}`;
+}
+
 export function memoNoteContent(filename: string, at: Date = new Date()): string {
   return [
     "# 🎙️ Voice memo",

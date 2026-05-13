@@ -7,6 +7,7 @@ import {
   memoNoteContent,
   memoPath,
   pickMimeType,
+  quickPath,
   requestMic,
 } from "./recorder";
 
@@ -215,6 +216,13 @@ describe("memo helpers", () => {
   it("path slots into Memos/YYYY/MM-DD/HH-MM-SS", () => {
     const at = new Date(2026, 3, 19, 14, 30, 5);
     expect(memoPath(at)).toBe("Memos/2026/04-19/14-30-05");
+  });
+
+  it("quickPath mirrors memoPath shape under Notes/", () => {
+    // Same grouping as memoPath() so Memos/<date> and Notes/<date> read
+    // as parallel concepts. Closes notes#126.
+    const at = new Date(2026, 4, 12, 9, 5, 30);
+    expect(quickPath(at)).toBe("Notes/2026/05-12/09-05-30");
   });
 
   it("note content embeds the filename as a wiki-attachment", () => {

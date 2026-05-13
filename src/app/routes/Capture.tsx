@@ -6,6 +6,7 @@ import {
   memoFilename,
   memoPath,
   pickMimeType,
+  quickPath,
   requestMic,
 } from "@/lib/capture/recorder";
 import { blobRef, enqueue, newBlobId, newLocalId } from "@/lib/sync";
@@ -75,12 +76,16 @@ export function Capture({
   const [tagInput, setTagInput] = useState("");
   // "More fields" — the audit's escape hatch from the quick-capture default.
   // Hidden by default so the textarea stays the no-friction focus; an
-  // operator who needs to set an explicit path or one-line summary opens
-  // this and gets the structured form without leaving Capture. Empty path
-  // means "let the vault auto-assign" (the existing behavior); empty summary
-  // means "no metadata.summary" — both inputs are pure overrides.
+  // operator who needs to override the path or set a one-line summary
+  // opens this and gets the structured form without leaving Capture.
+  //
+  // pathOverride is now pre-filled with `quickPath()` (notes#126) — the
+  // generated path is Notes-side, deterministic from mount time, and
+  // visible to the operator the moment they expand More fields. They can
+  // accept it, edit it, or clear it. Clearing falls back to "let the
+  // vault auto-assign" (empty string preserves the rc.5 escape valve).
   const [moreFieldsOpen, setMoreFieldsOpen] = useState(moreFieldsOpenDefault);
-  const [pathOverride, setPathOverride] = useState("");
+  const [pathOverride, setPathOverride] = useState(() => quickPath());
   const [summary, setSummary] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -544,7 +549,7 @@ export function Capture({
                 type="text"
                 value={pathOverride}
                 onChange={(e) => setPathOverride(e.target.value)}
-                placeholder="(blank → vault auto-assigns)"
+                placeholder="(blank → vault picks)"
                 aria-label="Path override"
                 className="rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-fg focus:border-accent focus:outline-none"
               />

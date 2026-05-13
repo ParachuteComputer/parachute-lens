@@ -1,5 +1,6 @@
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { SyncStatusIndicator } from "@/components/SyncStatusIndicator";
+import { TextSizeControl } from "@/components/TextSizeControl";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { VaultPopover } from "@/components/VaultPopover";
 import { useVaultStore } from "@/lib/vault";
@@ -56,12 +57,14 @@ export function Header() {
               </Link>
               <SyncStatusIndicator />
               <InstallPrompt />
+              <TextSizeControl />
               <ThemeToggle />
             </>
           ) : (
             <>
               <span className="text-sm text-fg-dim">No vault connected</span>
               <InstallPrompt />
+              <TextSizeControl />
               <ThemeToggle />
             </>
           )}
@@ -103,6 +106,7 @@ export function Header() {
               </div>
               <div className="mt-1 flex items-center gap-3">
                 <InstallPrompt />
+                <TextSizeControl />
                 <ThemeToggle />
               </div>
             </div>
@@ -111,6 +115,7 @@ export function Header() {
               <p className="text-sm text-fg-dim">No vault connected</p>
               <div className="flex items-center gap-3">
                 <InstallPrompt />
+                <TextSizeControl />
                 <ThemeToggle />
               </div>
             </div>

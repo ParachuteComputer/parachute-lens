@@ -1,6 +1,7 @@
 import { BottomTabBar } from "@/components/BottomTabBar";
 import { Header } from "@/components/Header";
 import { QuickSwitchMount } from "@/components/QuickSwitchMount";
+import { TextSizeShortcutsMount } from "@/components/TextSizeControl";
 import { Toaster } from "@/components/Toaster";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { VaultStatusBanner } from "@/components/VaultStatusBanner";
@@ -106,6 +107,7 @@ export function App() {
     <QueryProvider>
       <SyncProvider>
         <ReachabilityProbeMount />
+        <TextSizeShortcutsMount />
         <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}>
           <div className="min-h-dvh overflow-x-hidden bg-bg text-fg pb-16 md:pb-0">
             <Toaster />

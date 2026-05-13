@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+### Text-size shortcuts + header control; Capture path pre-fill
+
+- **feat(ui): accessible text-size (shortcuts + header) + locally-generated
+  capture path (0.3.15-rc.7).** Two follow-ups to rc.6 bundled because
+  they touch the same chrome / Capture surfaces. Closes notes#127 + #126.
+  - **Text-size keyboard shortcuts (notes#127).** Cmd+= / Cmd+Plus steps
+    up the ramp (default → larger → largest → default); Cmd+- /
+    Cmd+Underscore steps down; Cmd+0 resets to default. Bound at the
+    app root via `TextSizeShortcutsMount` so the listener lives in one
+    place — the visible `TextSizeControl` in the Header would otherwise
+    register twice (desktop + mobile menu). Ignored when Shift, Alt, or
+    neither modifier is held.
+  - **Header chrome control (notes#127).** Adds `TextSizeControl` — a
+    small "Aa" button next to the existing chrome (Install / Theme).
+    Click opens a 3-option popover (Default / Larger / Largest) with a
+    ✓ on the active row. Same persist + apply path as the Settings
+    dropdown via `lib/text-size.ts`. A same-tab `CustomEvent` keeps the
+    popover's active indicator in sync when a shortcut or sibling
+    control changes the size (the `storage` event only fires
+    cross-tab). Lives on both desktop and mobile menu so phones (no
+    keyboard) keep the path.
+  - **`nextTextSize` / `previousTextSize` helpers.** Added to
+    `lib/text-size.ts` for the shortcut handlers; mirror `nextTheme`
+    in `theme.ts` shape. Each direction is explicit so the call site
+    doesn't have to think about wrap-around arithmetic.
+  - **Capture path pre-fill (notes#126).** Adds `quickPath()` helper
+    next to `memoPath()` in `lib/capture/recorder.ts`. Same
+    `<root>/YYYY/MM-DD/HH-MM-SS` shape under `Notes/`. Capture's
+    `pathOverride` state is now seeded with `quickPath()` on mount so
+    the operator sees the generated path the moment they expand More
+    fields — no more invisible "vault auto-assigns" magic.
+  - **Audio-only memos.** With the pre-fill non-empty, audio captures
+    also land under `Notes/` by default (parallel to the text case).
+    Operators who want the old `Memos/` rule can clear the path input
+    — the existing rc.6 fallback to `memoPath()` for audio-only with
+    no override is preserved as the escape valve. New test pins this.
+  - **Tests.** 2 new in `text-size.test.ts` (cycle direction helpers).
+    12 new in `TextSizeControl.test.tsx` (button + popover behavior,
+    keyboard handlers, same-tab sync). 1 new in `recorder.test.ts`
+    (quickPath shape). 2 new in `Capture.test.tsx` (pre-fill is
+    editable + saved; audio-only fallback to `memoPath` when path is
+    cleared). Existing tests updated where pre-fill changed observable
+    behavior (text-only payload now carries `Notes/...`, combined
+    text+voice payload now carries `Notes/...` instead of vault-picks).
+
 ### Capture polish + view-level text-size
 
 - **feat(ui): unified capture surface refinements + view-level text-size
