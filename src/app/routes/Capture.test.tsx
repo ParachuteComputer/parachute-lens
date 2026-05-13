@@ -210,7 +210,10 @@ describe("Capture (unified)", () => {
     expect(rows.length).toBe(1);
     if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
     expect(rows[0].mutation.payload.content).toBe("got an #idea on the bus");
-    expect(rows[0].mutation.payload.path).toBeUndefined();
+    // Pre-fill from notes#126: pathOverride is now seeded with `quickPath()`
+    // on mount, so the payload's path is `Notes/<YYYY>/<MM-DD>/<HH-MM-SS>`.
+    // Asserting on the prefix keeps the test stable across clock minutes.
+    expect(rows[0].mutation.payload.path).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
     expect(rows[0].mutation.payload.tags).toEqual(["quick", "idea"]);
     db.close();
   });
@@ -257,7 +260,12 @@ describe("Capture (unified)", () => {
     ) {
       throw new Error("wrong mutation shape");
     }
-    expect(create.mutation.payload.path).toMatch(/^Memos\//);
+    // With notes#126's pre-fill, pathOverride is seeded with `quickPath()`
+    // on mount and wins over the audio-only memoPath fallback. Audio-only
+    // memos now land under Notes/<date>/<time> by default. To keep them
+    // in Memos/, the user can clear the path input (then memoPath kicks
+    // in — see the "audio-only with cleared path" test below).
+    expect(create.mutation.payload.path).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
     expect(create.mutation.payload.tags).toEqual(["voice"]);
     expect(create.mutation.payload.content).toContain("_Transcript pending._");
     expect(create.mutation.payload.content).toContain("![[");
@@ -299,8 +307,10 @@ describe("Capture (unified)", () => {
     const rows = await listPending(db, "dev");
     const create = rows.find((r) => r.mutation.kind === "create-note")!;
     if (create.mutation.kind !== "create-note") throw new Error("wrong mutation shape");
-    // Combined notes don't pin to Memos/ — they belong with the user's other notes.
-    expect(create.mutation.payload.path).toBeUndefined();
+    // Pre-fill from notes#126: combined text+voice notes also carry the
+    // quickPath value (used to be `undefined` here, meaning vault picks).
+    // They no longer pin to Memos/ — they belong with the user's other notes.
+    expect(create.mutation.payload.path).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
     expect(create.mutation.payload.content).toContain("context for the recording #meeting");
     expect(create.mutation.payload.content).toContain("![[");
     expect(create.mutation.payload.tags).toEqual(["quick", "voice", "meeting"]);
@@ -723,6 +733,93 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     const create = rows.find((r) => r.mutation.kind === "create-note")!;
     if (create.mutation.kind !== "create-note") throw new Error("expected create-note");
     expect(create.mutation.payload.path).toBe("Recordings/2026/may");
+    db.close();
+  });
+
+  it("Pre-filled path is editable and the edit is what's saved (notes#126)", async () => {
+    // The path-override input is now pre-filled with `quickPath()` on
+    // mount (notes#126). This test confirms (a) the input renders with
+    // a non-empty value, and (b) editing replaces that value cleanly —
+    // no merging, no append.
+    renderAt("/capture");
+    await waitForReady();
+    const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
+    await act(async () => {
+      detailsEl.open = true;
+      detailsEl.dispatchEvent(new Event("toggle"));
+    });
+
+    const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    // Pre-fill is non-empty and matches the quickPath shape.
+    expect(pathInput.value).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
+
+    // Edit the input to a custom value.
+    await act(async () => {
+      fireEvent.change(pathInput, { target: { value: "Projects/2026/q2/launch" } });
+    });
+
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "kickoff notes" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^capture$/i }));
+    });
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    });
+
+    const db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
+    expect(rows[0].mutation.payload.path).toBe("Projects/2026/q2/launch");
+    db.close();
+  });
+
+  it("Audio-only with manually cleared path falls back to memoPath (rc.6 escape valve)", async () => {
+    // notes#126's pre-fill is the new default, but clearing the path
+    // input is the operator's signal of "I want the historical rule".
+    // For audio-only captures, that rule is `memoPath()` → `Memos/`.
+    // This test pins the escape valve so a future refactor doesn't
+    // delete the fallback.
+    renderAt("/capture");
+    await waitForReady();
+    const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
+    await act(async () => {
+      detailsEl.open = true;
+      detailsEl.dispatchEvent(new Event("toggle"));
+    });
+
+    const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(pathInput, { target: { value: "" } });
+    });
+
+    // Audio-only — no text typed.
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByRole("button", { name: /hold to record/i }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /recording/i })).toBeInTheDocument();
+    });
+    await act(async () => {
+      releasePointer();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/recorded /i)).toBeInTheDocument();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^capture$/i }));
+    });
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.tone === "success")).toBe(true);
+    });
+
+    const db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    const create = rows.find((r) => r.mutation.kind === "create-note")!;
+    if (create.mutation.kind !== "create-note") throw new Error("expected create-note");
+    expect(create.mutation.payload.path).toMatch(/^Memos\//);
     db.close();
   });
 });

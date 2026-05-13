@@ -50,3 +50,21 @@ export function textSizeLabel(size: TextSize): string {
   if (size === "largest") return "Largest";
   return "Default";
 }
+
+// Cycle to the next step in the canonical ramp (default → larger → largest →
+// default). Used by Cmd+Plus to step up and the header chrome control to walk
+// forward without a popover. Mirrors `nextTheme` in `theme.ts`.
+export function nextTextSize(current: TextSize): TextSize {
+  const idx = TEXT_SIZES.indexOf(current);
+  return TEXT_SIZES[(idx + 1) % TEXT_SIZES.length] ?? "default";
+}
+
+// Step down the ramp (largest → larger → default → largest). Cmd+Minus.
+// Distinct from `nextTextSize` so each direction is explicit at the call
+// site — the shortcut handlers shouldn't have to think about wrap-around
+// arithmetic.
+export function previousTextSize(current: TextSize): TextSize {
+  const idx = TEXT_SIZES.indexOf(current);
+  const len = TEXT_SIZES.length;
+  return TEXT_SIZES[(idx - 1 + len) % len] ?? "default";
+}
