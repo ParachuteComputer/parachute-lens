@@ -4,7 +4,6 @@ import {
   type RecorderController,
   createRecorder,
   memoFilename,
-  memoPath,
   pickMimeType,
   quickPath,
   requestMic,
@@ -12,6 +11,8 @@ import {
 import { blobRef, enqueue, newBlobId, newLocalId } from "@/lib/sync";
 import { useToastStore } from "@/lib/toast/store";
 import { useTagRoles, useVaultStore } from "@/lib/vault";
+import { useActiveVaultClient } from "@/lib/vault/queries";
+import { ensureNotesSchema } from "@/lib/vault/schema-ensure";
 import { useSync } from "@/providers/SyncProvider";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate } from "react-router";
@@ -70,6 +71,7 @@ export function Capture({
   const pushToast = useToastStore((s) => s.push);
   const { db, blobStore, engine } = useSync();
   const { roles } = useTagRoles(activeVault?.id ?? null);
+  const client = useActiveVaultClient();
 
   const [content, setContent] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -79,13 +81,24 @@ export function Capture({
   // operator who needs to override the path or set a one-line summary
   // opens this and gets the structured form without leaving Capture.
   //
-  // pathOverride is now pre-filled with `quickPath()` (notes#126) — the
-  // generated path is Notes-side, deterministic from mount time, and
-  // visible to the operator the moment they expand More fields. They can
-  // accept it, edit it, or clear it. Clearing falls back to "let the
-  // vault auto-assign" (empty string preserves the rc.5 escape valve).
+  // pathOverride is pre-filled with `quickPath()` (notes#126). After save
+  // success, `reset()` regenerates the path so a second capture in the same
+  // mount doesn't collide on the prior second — but ONLY when the operator
+  // hasn't manually edited the value (`pathEditedRef` tracks that). An
+  // empty input at save time reverts to `generatedPathRef.current` (option
+  // d, notes#126 reshape — never falls back to vault-auto-assign). Aaron's
+  // framing: surface the path-gen, don't hide it behind vault magic.
   const [moreFieldsOpen, setMoreFieldsOpen] = useState(moreFieldsOpenDefault);
-  const [pathOverride, setPathOverride] = useState(() => quickPath());
+  const generatedPathRef = useRef(quickPath());
+  const pathEditedRef = useRef(false);
+  const [pathOverride, setPathOverrideRaw] = useState<string>(() => generatedPathRef.current);
+  // Wrap setPathOverride so any user-typed value distinct from the
+  // last-generated path flips the "edited" flag. Restoring the generated
+  // value (or clearing the field) clears the flag.
+  const setPathOverride = useCallback((next: string) => {
+    pathEditedRef.current = next.trim() !== "" && next !== generatedPathRef.current;
+    setPathOverrideRaw(next);
+  }, []);
   const [summary, setSummary] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -204,10 +217,21 @@ export function Capture({
     setContent("");
     setTags([]);
     setTagInput("");
-    // Don't clear pathOverride / summary — the user opened "More fields"
-    // deliberately and may be capturing multiple notes into the same path
-    // (e.g. "Daily/2026-05-12"). They can close the panel or clear the
-    // inputs themselves; resetting silently every time would be surprising.
+    // Path-collision fix (notes#126 reshape, raised in #130 review):
+    // regenerate the default `quickPath()` so a second capture on the same
+    // mount doesn't collide with the first one's second-granularity path.
+    // Only when the operator hasn't manually edited — if they typed an
+    // explicit path (e.g. "Daily/2026-05-12") they probably want to keep
+    // capturing into it. `pathEditedRef` tracks that intent (set by the
+    // setPathOverride wrapper).
+    if (!pathEditedRef.current) {
+      const fresh = quickPath();
+      generatedPathRef.current = fresh;
+      setPathOverrideRaw(fresh);
+    }
+    // Don't clear summary — same reasoning as the audit's "More fields"
+    // deliberate-open: the user is in structured-form mode and silently
+    // resetting their typed summary would be surprising.
     discardAudio();
     textareaRef.current?.focus();
   }, [discardAudio]);
@@ -237,12 +261,23 @@ export function Capture({
 
     const localId = newLocalId();
 
-    // "More fields" overrides: trim once here so empty-after-trim values
-    // don't end up as `path: ""` (vault would reject) or
-    // `metadata.summary: ""` (worthless metadata noise).
-    const pathOverrideValue = pathOverride.trim();
+    // Path resolution (notes#126 reshape, option d): empty input reverts to
+    // the mount-time generated value — clearing the path never hands
+    // generation back to the vault. Summary trim drops empty-string noise.
+    const pathToSave = pathOverride.trim() || generatedPathRef.current;
     const summaryValue = summary.trim();
     const metadata = summaryValue ? { summary: summaryValue } : undefined;
+
+    // Schema-ensure (notes#126 reshape) — fire-and-forget per-session,
+    // per-vault. Idempotent vault-side; refs in schema-ensure.ts gate
+    // repeat calls. Failures don't block the capture; the next save
+    // retries. We DON'T await this — it can race with the create-note
+    // enqueue safely because vault accepts notes with as-yet-unwritten
+    // tag-identity rows (the tag-identity is for hierarchy queries, not
+    // create-note validation).
+    if (client) {
+      void ensureNotesSchema(activeVault.id, client);
+    }
 
     try {
       if (audio) {
@@ -256,11 +291,9 @@ export function Capture({
         const body = hasText
           ? `${content.trim()}\n\n_Transcript pending._\n\n![[${filename}]]\n`
           : `_Transcript pending._\n\n![[${filename}]]\n`;
-        // Path precedence: explicit override > audio-only memo path > let
-        // the vault auto-assign. Override wins on every shape so the user
-        // can place an audio note anywhere they want, including the typed
-        // case (where today we'd let the vault pick).
-        const path = pathOverrideValue || (hasText ? undefined : memoPath(recordedAt));
+        // Option (d): one canonical Notes-side path rule, no phase-dependent
+        // forks. What the operator saw in More fields is what gets written.
+        const path = pathToSave;
 
         if (!blobStore) throw new Error("blob store missing");
         await blobStore.put(blobId, audio.data, audio.mimeType, activeVault.id);
@@ -271,7 +304,7 @@ export function Capture({
             localId,
             payload: {
               content: body,
-              ...(path ? { path } : {}),
+              path,
               ...(finalTags.length ? { tags: finalTags } : {}),
               ...(metadata ? { metadata } : {}),
             },
@@ -308,7 +341,7 @@ export function Capture({
             localId,
             payload: {
               content,
-              ...(pathOverrideValue ? { path: pathOverrideValue } : {}),
+              path: pathToSave,
               ...(finalTags.length ? { tags: finalTags } : {}),
               ...(metadata ? { metadata } : {}),
             },
@@ -350,6 +383,7 @@ export function Capture({
     db,
     activeVault,
     blobStore,
+    client,
     phase,
     hasAudio,
     hasText,
@@ -411,7 +445,10 @@ export function Capture({
       const all = Array.from(
         new Set([roles.captureText, ...explicit, ...extracted].filter((t) => t.length > 0)),
       );
-      const pathValue = pathOverride.trim();
+      // Same path-resolution as save() (option d): trimmed override OR
+      // the mount-time generated path. Never write `path: undefined` to
+      // the queue — the path is always Notes-side.
+      const pathValue = pathOverride.trim() || generatedPathRef.current;
       const summaryValue = summary.trim();
       // Swallow rejections here — we're in the unmount path, so there's no
       // user-visible surface to report a failure (the toaster has already
@@ -426,7 +463,7 @@ export function Capture({
           localId: newLocalId(),
           payload: {
             content,
-            ...(pathValue ? { path: pathValue } : {}),
+            path: pathValue,
             ...(all.length ? { tags: all } : {}),
             ...(summaryValue ? { metadata: { summary: summaryValue } } : {}),
           },
@@ -549,7 +586,7 @@ export function Capture({
                 type="text"
                 value={pathOverride}
                 onChange={(e) => setPathOverride(e.target.value)}
-                placeholder="(blank → vault picks)"
+                placeholder="(blank → uses generated path)"
                 aria-label="Path override"
                 className="rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-fg focus:border-accent focus:outline-none"
               />

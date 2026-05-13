@@ -2,6 +2,64 @@
 
 ## Unreleased
 
+### Capture reshape — hierarchical capture/* tags + schema-ensure + option (d) + path-collision fix
+
+- **feat(capture): hierarchical capture tags + schema-ensure + option (d) +
+  path-collision fix (0.3.15-rc.8).** Closes notes#126 (reshaped scope).
+  Builds on rc.7's `quickPath()` pre-fill with Aaron's confirmed `capture/*`
+  classification model + several reviewer follow-ups bundled.
+  - **`NOTES_REQUIRED_SCHEMA` in `src/lib/vault/schema.ts`** declares the
+    `capture` parent + `capture/text` + `capture/voice` children with
+    `parent_names: ["capture"]`. First instance of patterns#57 (surface-
+    declares-required-schema). Future extensions (`capture/photo`,
+    `capture/web-clip`) slot in without rename.
+  - **Tag Role defaults rename**: `DEFAULT_TAG_ROLES.captureText` →
+    `"capture/text"`, `DEFAULT_TAG_ROLES.captureVoice` → `"capture/voice"`.
+    **Existing vaults preserve their stored values** — if a user has
+    `captureText = "quick"` from rc.6, that stays. Only fresh-vault
+    inheritance changes.
+  - **`update-tag` client method + idempotent `ensureNotesSchema()` hook**
+    in `src/lib/vault/schema-ensure.ts`. PUTs each declared tag against
+    `/api/tags/:name` (field-merged vault-side; no-op when already-correct).
+    Per-vault per-session ref guard so repeated captures don't hammer the
+    vault. Failure rolls back the guard so the next capture retries.
+    Captures-side wiring is fire-and-forget — schema setup doesn't block
+    the user's save.
+  - **Option (d) bundled** (was the closed PR #131): clearing the path
+    input reverts to the mount-time generated value, never vault-picks.
+    Resolution becomes `pathOverride.trim() || generatedPathRef.current`.
+    The rc.6 `memoPath()` audio-only fallback is dropped — unreachable
+    under option (d). One canonical Notes-side rule, no phase-dependent
+    forks. Aaron's framing: don't re-introduce hidden vault-picks magic
+    via the cleared-input path.
+  - **Path-collision fix** (raised in #130 review): `quickPath()` is
+    second-granularity, so two captures within the same wall-clock second
+    would land at the same path. `reset()` after successful save now
+    regenerates `quickPath()` AND updates the input — but only when the
+    operator hasn't manually edited. A user typing an explicit path
+    (e.g. `Daily/2026-05-12`) is capturing into a deliberate location;
+    don't fight them. `pathEditedRef` tracks edit intent; restoring the
+    generated value clears the flag.
+  - **Placeholder text** updated: `"(blank → vault picks)"` →
+    `"(blank → uses generated path)"` so the UI itself describes the
+    option-(d) rule.
+  - **Tests.** 6 new in `schema-ensure.test.ts` (declaration-order PUTs,
+    parent-before-children, per-session per-vault idempotence, multi-vault
+    independence, retry-on-failure, swallow-failure-doesn't-throw). 2 new
+    in `Capture.test.tsx` (regen-on-reset when unedited; preserve user
+    edit across reset). 4 existing tests flipped where defaults changed
+    (captureText → `capture/text`, captureVoice → `capture/voice`,
+    text+voice combined now both hierarchical) or option (d) changed
+    semantics ("empty path reverts to generated", "audio-only cleared
+    path reverts to generated"). `Capture.test.tsx` adds a `vi.mock` for
+    `@/lib/vault/schema-ensure` so capture tests don't hit the real PUT
+    (covered by schema-ensure.test.ts).
+
+### Not in scope (deferred)
+
+- Full Settings audit UI + connect-time banner → notes#129.
+- Per-vault customization of path templates → notes#128.
+
 ### Text-size shortcuts + header control; Capture path pre-fill
 
 - **feat(ui): accessible text-size (shortcuts + header) + locally-generated
