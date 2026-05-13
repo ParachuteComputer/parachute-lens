@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VaultClient } from "./client";
 import { NOTES_REQUIRED_SCHEMA } from "./schema";
-import { _resetEnsuredVaultsForTesting, ensureNotesSchema } from "./schema-ensure";
+import { _resetEnsuredVaultsForTesting, ensureNotesSchema, fixSchema } from "./schema-ensure";
 
 function makeClient(fetchImpl: ReturnType<typeof vi.fn>): VaultClient {
   return new VaultClient({
@@ -118,5 +118,46 @@ describe("ensureNotesSchema", () => {
     expect(warnSpy).toHaveBeenCalled();
 
     warnSpy.mockRestore();
+  });
+});
+
+describe("fixSchema (notes#129 user-driven path)", () => {
+  beforeEach(() => {
+    _resetEnsuredVaultsForTesting();
+  });
+  afterEach(() => {
+    _resetEnsuredVaultsForTesting();
+  });
+
+  it("PUTs every declared tag (bypasses the per-session guard)", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const client = makeClient(fetchImpl);
+
+    // First, ensure once — the session guard marks v1 as ensured.
+    await ensureNotesSchema("v1", client);
+    const callsAfterEnsure = fetchImpl.mock.calls.length;
+    expect(callsAfterEnsure).toBe(NOTES_REQUIRED_SCHEMA.tags.length);
+
+    // ensureNotesSchema would skip. fixSchema must not.
+    await fixSchema("v1", client);
+    expect(fetchImpl.mock.calls.length).toBe(callsAfterEnsure + NOTES_REQUIRED_SCHEMA.tags.length);
+  });
+
+  it("rethrows on failure (unlike ensureNotesSchema which swallows)", async () => {
+    const fetchImpl = vi.fn(async () => new Response("boom", { status: 500 }));
+    const client = makeClient(fetchImpl);
+
+    await expect(fixSchema("v1", client)).rejects.toBeDefined();
+  });
+
+  it("marks the vault as ensured after success — next ensure call is a no-op", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const client = makeClient(fetchImpl);
+
+    await fixSchema("v1", client);
+    const callsAfterFix = fetchImpl.mock.calls.length;
+
+    await ensureNotesSchema("v1", client);
+    expect(fetchImpl.mock.calls.length).toBe(callsAfterFix);
   });
 });

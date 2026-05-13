@@ -1,6 +1,7 @@
 import { BottomTabBar } from "@/components/BottomTabBar";
 import { Header } from "@/components/Header";
 import { QuickSwitchMount } from "@/components/QuickSwitchMount";
+import { SchemaAuditBanner } from "@/components/SchemaAuditBanner";
 import { TextSizeShortcutsMount } from "@/components/TextSizeControl";
 import { Toaster } from "@/components/Toaster";
 import { UpdateBanner } from "@/components/UpdateBanner";
@@ -10,6 +11,7 @@ import { useVaultStore } from "@/lib/vault";
 import { useCrossTabVaultSync } from "@/lib/vault/cross-tab-sync";
 import { useActiveVaultClient } from "@/lib/vault/queries";
 import { useReachabilityProbe } from "@/lib/vault/reachability-probe";
+import { SchemaAuditRunnerMount } from "@/lib/vault/schema-audit-runner";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { SyncProvider } from "@/providers/SyncProvider";
 import { Suspense, lazy, useEffect } from "react";
@@ -107,12 +109,14 @@ export function App() {
     <QueryProvider>
       <SyncProvider>
         <ReachabilityProbeMount />
+        <SchemaAuditRunnerMount />
         <TextSizeShortcutsMount />
         <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}>
           <div className="min-h-dvh overflow-x-hidden bg-bg text-fg pb-16 md:pb-0">
             <Toaster />
             <UpdateBanner />
             <VaultStatusBanner />
+            <SchemaAuditBanner />
             <Header />
             <QuickSwitchMount />
             <main>
