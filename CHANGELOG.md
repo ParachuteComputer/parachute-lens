@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+### Capture draft-save + global text-size zoom
+
+- **fix(capture): autosave is now a background draft, not a finalize-and-
+  clear (0.3.15-rc.10).** P0 bug from Aaron's morning report: typing
+  "hello world" in Capture and waiting 5s wiped the textarea. Root
+  cause: `save()`'s success path called `reset()` (clears content +
+  path) AND never set `phase: "idle"` back, so `canSubmit` stayed
+  false and the textarea (`disabled={phase === "saving"}`) stayed
+  locked.
+  - The redesign: a new `draftSave()` writes a partial as a background
+    draft. First fire enqueues `create-note` with a fresh localId;
+    subsequent fires on the same mount enqueue `update-note` for the
+    same localId (no duplicate notes). Never touches `phase`, never
+    clears `content`. A `draftRef.current` carries
+    `{ localId, hasEnqueuedCreate }` across the mount.
+  - The manual Capture click (and ⌘↵) is the finalize action — if a
+    draft is in flight, it enqueues `update-note` (the create already
+    shipped) and clears `draftRef` via `reset()`. Phase explicitly
+    resets to `idle` after success so the textarea unlocks for the
+    next capture on the same mount.
+  - Unmount-flush mirrors the same shape: enqueues `update-note` if
+    a draft is in flight (otherwise `create-note`). Nav-away no longer
+    duplicates the draft.
+  - Subtle "Draft saved · <relative time>" indicator below the
+    textarea (right-aligned, `text-fg-dim` micro size). Only renders
+    after the first successful draft save.
+  - Audio captures still finalize-and-clear via the manual Capture
+    click — autosave stays suppressed when `phase === "have-audio"`.
+
+- **fix(ui): text-size knob now scales the whole app, not just `.prose-
+  note` + CodeMirror (0.3.15-rc.10).** Aaron reported the Larger /
+  Largest radios "appeared to do nothing" on Settings. rc.6's scope
+  was too narrow: only `.prose-note` and CodeMirror consumed the
+  `--font-size-*` variables, so headers, lists, capture, Settings,
+  bottom-tab — none scaled. Added `font-size` on the html root inside
+  the `:root[data-text-size="larger"]` (17.5px) and `"largest"` (19px)
+  blocks. Tailwind sizes are rem-based, so every chrome element scales
+  proportionally. The prose / editor variables stay so the reader
+  remains slightly larger than the chrome (read-content > navigation
+  feels right).
+
+- **Tests.** 4 existing autosave tests rewritten for draft-save
+  semantics — assert queue rows directly instead of "Captured." toast,
+  assert content is preserved across autosaves (the bug), assert
+  update-note enqueues on the second draft fire and on unmount-flush
+  after a draft. Test names renamed to reflect the new model.
+
 ### Schema-ensure audit UI — Settings panel + connect-time banner
 
 - **feat(schema): audit UI for the required Notes schema (0.3.15-rc.9).**

@@ -9,6 +9,7 @@ import {
   requestMic,
 } from "@/lib/capture/recorder";
 import { blobRef, enqueue, newBlobId, newLocalId } from "@/lib/sync";
+import { relativeTime } from "@/lib/time";
 import { useToastStore } from "@/lib/toast/store";
 import { useTagRoles, useVaultStore } from "@/lib/vault";
 import { useActiveVaultClient } from "@/lib/vault/queries";
@@ -102,6 +103,28 @@ export function Capture({
   const [summary, setSummary] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [elapsedMs, setElapsedMs] = useState(0);
+  // Background draft-save state (notes#127-followup, rc.10):
+  //
+  // Autosave used to call the full `save()` which set phase=saving (disabling
+  // the textarea) and called `reset()` (clearing content). Aaron's
+  // mid-thought typing got wiped. The redesign: autosave writes a DRAFT —
+  // it enqueues create-note on first fire, then update-note on subsequent
+  // fires (same localId), and NEVER touches phase or content. The user
+  // keeps typing into the same textarea; the draft updates in the
+  // background. Manual Capture is still the "I'm done" finalize action:
+  // if a draft is in flight, it enqueues update-note (the create already
+  // shipped) and clears the draft state on reset.
+  //
+  // draftRef.current === null means no draft is in flight. Once a draft
+  // exists, `hasEnqueuedCreate` toggles to true after the create-note
+  // hits the queue, so subsequent saves enqueue update-note instead.
+  const draftRef = useRef<{
+    localId: string;
+    hasEnqueuedCreate: boolean;
+  } | null>(null);
+  // Wall-clock ms of the most recent successful background draft save.
+  // Drives the "Draft saved · just now" indicator next to the textarea.
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
 
   const recorderRef = useRef<RecorderController | null>(null);
   const previewUrlRef = useRef<string | null>(null);
@@ -214,6 +237,10 @@ export function Capture({
   }, []);
 
   const reset = useCallback(() => {
+    // Finalize the current capture session — clear background draft state
+    // too. The next note typed in this mount starts a fresh draft.
+    draftRef.current = null;
+    setDraftSavedAt(null);
     setContent("");
     setTags([]);
     setTagInput("");
@@ -259,7 +286,12 @@ export function Capture({
       new Set([...modeTags, ...explicitTags, ...extracted].filter((t) => t.length > 0)),
     );
 
-    const localId = newLocalId();
+    // For the text-only path, prefer the in-flight draft's localId so the
+    // manual Capture click finalizes the same note the autosave was
+    // building — otherwise we'd duplicate. For audio captures (no draft
+    // path) and the no-draft text case, mint a fresh id.
+    const draft = draftRef.current;
+    const localId = draft?.localId ?? newLocalId();
 
     // Path resolution (notes#126 reshape, option d): empty input reverts to
     // the mount-time generated value — clearing the path never hands
@@ -332,8 +364,28 @@ export function Capture({
           },
           { vaultId: activeVault.id },
         );
+      } else if (draft?.hasEnqueuedCreate) {
+        // Finalize an in-flight background draft (rc.10). The create-note
+        // already shipped via the first autosave; enqueue an update-note
+        // with the latest content + tags + path. `path` and `tags` go
+        // through here too because the operator may have edited them in
+        // More-fields between autosaves and the manual Capture click.
+        await enqueue(
+          db,
+          {
+            kind: "update-note",
+            targetId: localId,
+            payload: {
+              content,
+              path: pathToSave,
+              ...(finalTags.length ? { tags: { add: finalTags } } : {}),
+              ...(metadata ? { metadata } : {}),
+            },
+          },
+          { vaultId: activeVault.id },
+        );
       } else {
-        // Text only.
+        // Text only, no draft in flight — fresh create.
         await enqueue(
           db,
           {
@@ -352,11 +404,14 @@ export function Capture({
       void engine?.runOnce();
       pushToast(audio ? "Captured — syncing audio." : "Captured.", "success");
       reset();
-      // Critical for autosave: the user stays on the page after a successful
-      // autosave, so this in-flight flag has to release or every subsequent
-      // autosave AND the unmount-flush silently bail. Pre-autosave the manual
-      // Capture click was the only entry point and a fresh mount handled the
-      // reset implicitly; with the 5s timer the mount is reused across saves.
+      // Critical: setPhase wasn't reset to idle here in rc.9 — `canSubmit`
+      // stayed false for the rest of the mount and the textarea
+      // (disabled={phase === "saving"}) stayed locked. Flip back to idle so
+      // the user can keep capturing on the same mount. rc.10 fix.
+      setPhase({ kind: "idle" });
+      // Release the in-flight flag so the unmount-flush will still flush a
+      // later draft if the user keeps typing. Pre-rc.10 this was already
+      // critical; with the new draft-save loop it stays so.
       savingRef.current = false;
     } catch (e) {
       pushToast(e instanceof Error ? `Capture failed: ${e.message}` : "Capture failed.", "error");
@@ -396,6 +451,87 @@ export function Capture({
     engine,
     pushToast,
     reset,
+  ]);
+
+  // Background draft save — runs from the 5s inactivity timer. Unlike
+  // save() this NEVER touches phase (no textarea disable), NEVER clears
+  // content, and quietly retries the next tick if the queue isn't ready
+  // (no toast). First call enqueues create-note; subsequent calls on the
+  // same mount enqueue update-note targeting the same localId.
+  //
+  // Audio is deliberately not handled here — autosave is suppressed when
+  // phase is "have-audio" (the user's explicit Capture action finalizes
+  // audio + content together).
+  const draftSave = useCallback(async () => {
+    if (!db || !activeVault) return;
+    if (phase.kind !== "idle") return;
+    if (!hasText) return;
+
+    const explicit = tags.filter((t) => t.length > 0);
+    const extracted = extractHashtags(content);
+    const all = Array.from(
+      new Set([roles.captureText, ...explicit, ...extracted].filter((t) => t.length > 0)),
+    );
+    const pathValue = pathOverride.trim() || generatedPathRef.current;
+    const summaryValue = summary.trim();
+    const metadata = summaryValue ? { summary: summaryValue } : undefined;
+
+    try {
+      const draft = draftRef.current;
+      if (!draft) {
+        const localId = newLocalId();
+        // Set the ref BEFORE the await so a parallel autosave fire on the
+        // next tick (extremely unlikely, but the timer is debounced) sees
+        // the existing draft and routes to update-note.
+        draftRef.current = { localId, hasEnqueuedCreate: false };
+        await enqueue(
+          db,
+          {
+            kind: "create-note",
+            localId,
+            payload: {
+              content,
+              path: pathValue,
+              ...(all.length ? { tags: all } : {}),
+              ...(metadata ? { metadata } : {}),
+            },
+          },
+          { vaultId: activeVault.id },
+        );
+        draftRef.current = { localId, hasEnqueuedCreate: true };
+      } else {
+        await enqueue(
+          db,
+          {
+            kind: "update-note",
+            targetId: draft.localId,
+            payload: {
+              content,
+              path: pathValue,
+              ...(all.length ? { tags: { add: all } } : {}),
+              ...(metadata ? { metadata } : {}),
+            },
+          },
+          { vaultId: activeVault.id },
+        );
+      }
+      void engine?.runOnce();
+      setDraftSavedAt(Date.now());
+    } catch {
+      // Draft save is best-effort — silent failure. The next tick will
+      // retry; the unmount-flush is the last-ditch safety net.
+    }
+  }, [
+    db,
+    activeVault,
+    phase.kind,
+    hasText,
+    content,
+    tags,
+    pathOverride,
+    summary,
+    roles.captureText,
+    engine,
   ]);
 
   // Cmd/Ctrl+Enter submits — same shortcut TextCapture used to have.
@@ -456,39 +592,63 @@ export function Capture({
       // tests is the SyncProvider closing its IDB handle in the same tick;
       // in production the queue is more durable. Either way, no UI to
       // notify.
-      enqueue(
-        db,
-        {
-          kind: "create-note",
-          localId: newLocalId(),
-          payload: {
-            content,
-            path: pathValue,
-            ...(all.length ? { tags: all } : {}),
-            ...(summaryValue ? { metadata: { summary: summaryValue } } : {}),
-          },
-        },
-        { vaultId: activeVaultId },
-      ).catch(() => {
+      //
+      // If a background draft is in flight (rc.10 draft-save loop), update
+      // that note instead of creating a new one — otherwise nav-away
+      // duplicates the draft as a fresh note. The create-note (if any was
+      // enqueued by the first autosave) already shipped its content; this
+      // PATCH just brings the post-autosave keystrokes along.
+      const draft = draftRef.current;
+      const enqueuePromise = draft?.hasEnqueuedCreate
+        ? enqueue(
+            db,
+            {
+              kind: "update-note",
+              targetId: draft.localId,
+              payload: {
+                content,
+                path: pathValue,
+                ...(all.length ? { tags: { add: all } } : {}),
+                ...(summaryValue ? { metadata: { summary: summaryValue } } : {}),
+              },
+            },
+            { vaultId: activeVaultId },
+          )
+        : enqueue(
+            db,
+            {
+              kind: "create-note",
+              localId: draft?.localId ?? newLocalId(),
+              payload: {
+                content,
+                path: pathValue,
+                ...(all.length ? { tags: all } : {}),
+                ...(summaryValue ? { metadata: { summary: summaryValue } } : {}),
+              },
+            },
+            { vaultId: activeVaultId },
+          );
+      enqueuePromise.catch(() => {
         // best-effort flush on nav-away
       });
     };
   }, []);
 
-  // Inactivity autosave (5s) — fires save() after the user stops editing for
-  // 5 seconds so a long-typed note isn't lost to a browser crash or accidental
-  // close. Skipped while audio is staged (saving with attachment is the user's
-  // explicit Capture-click decision), while recording/saving (mid-state), and
-  // while body is empty (nothing to save). The timer resets on every content,
-  // tags, path, or summary change. Hardcoded 5s per the brief — short enough
-  // to feel snappy on long sessions, long enough not to spam the queue on
-  // every keystroke. Cleanup cancels any in-flight timer on unmount so we
-  // don't race the unmount-flush.
+  // Inactivity autosave (5s) — fires `draftSave()` after the user stops
+  // editing for 5 seconds. Saves a partial as a background draft (notes
+  // #127-followup rc.10 redesign): first fire enqueues create-note, each
+  // subsequent fire enqueues update-note for the same localId. Never
+  // clears content; never disables the textarea. The manual Capture
+  // click is the finalize step.
   //
-  // `tags`, `pathOverride`, `summary` are intentional debounce triggers — a
-  // change in any of them must reset this 5s timer so autosave fires 5s
-  // after the LAST edit, not 5s after the last content edit only. They're
-  // read by save() via its own closure (hence Biome can't see them used).
+  // Skipped while audio is staged (audio capture is finalize-only, the
+  // user's explicit Capture-click decision), while recording (mid-state),
+  // and while body is empty (nothing to save).
+  //
+  // `tags`, `pathOverride`, `summary` are intentional debounce triggers —
+  // a change in any of them must reset this 5s timer so the autosave
+  // fires 5s after the LAST edit. They're read by `draftSave` via its
+  // closure (hence Biome can't see them used).
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useEffect(() => {
     if (phase.kind === "recording" || phase.kind === "requesting" || phase.kind === "saving") {
@@ -498,10 +658,10 @@ export function Capture({
     if (!hasText) return;
     const id = setTimeout(() => {
       if (savingRef.current) return;
-      void save();
+      void draftSave();
     }, 5000);
     return () => clearTimeout(id);
-  }, [phase.kind, hasText, content, tags, pathOverride, summary, save]);
+  }, [phase.kind, hasText, content, tags, pathOverride, summary, draftSave]);
 
   if (!activeVault) return <Navigate to="/" replace />;
 
@@ -528,6 +688,12 @@ export function Capture({
           disabled={phase.kind === "saving"}
           className="min-h-[30vh] w-full resize-y rounded-md border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-fg-dim focus:border-accent focus:outline-none disabled:opacity-60"
         />
+
+        {draftSavedAt !== null ? (
+          <p className="-mt-2 text-right text-[11px] text-fg-dim" aria-live="polite">
+            Draft saved · {relativeTime(new Date(draftSavedAt).toISOString())}
+          </p>
+        ) : null}
 
         {phase.kind === "have-audio" ? (
           <div className="flex flex-col gap-2 rounded-md border border-accent/30 bg-accent/5 p-3">

@@ -969,7 +969,12 @@ describe("Capture — inactivity autosave (5s)", () => {
     vi.restoreAllMocks();
   });
 
-  it("typing + 5s of inactivity fires save()", async () => {
+  it("typing + 5s of inactivity fires draftSave() in the background", async () => {
+    // rc.10 redesign: autosave is now a silent background draft (NOT a
+    // finalize-and-clear). After 5s of inactivity, the create-note hits
+    // the queue but the textarea content stays — the user can keep typing.
+    // No toast (it's not a user action), no `phase: "saving"` (no textarea
+    // disable). The visible signal is the "Draft saved" pill below.
     renderAt("/capture");
     await waitForReady();
     const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
@@ -989,18 +994,27 @@ describe("Capture — inactivity autosave (5s)", () => {
     await act(async () => {
       vi.advanceTimersByTime(2_000);
     });
-    await waitFor(() => {
-      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+
+    await waitFor(async () => {
+      const dbInner = await openLensDB();
+      const rows = await listPending(dbInner, "dev");
+      dbInner.close();
+      expect(rows.length).toBe(1);
     });
+
     db = await openLensDB();
     const rows = await listPending(db, "dev");
-    expect(rows.length).toBe(1);
     if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
     expect(rows[0].mutation.payload.content).toBe("auto-saved thought");
     db.close();
+
+    // Content is preserved (not cleared by a reset).
+    expect(textarea.value).toBe("auto-saved thought");
+    // No "Captured." toast — that's reserved for explicit Capture clicks.
+    expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(false);
   });
 
-  it("further edits within the 5s window reset the timer", async () => {
+  it("further edits within the 5s window reset the timer (draft-save)", async () => {
     renderAt("/capture");
     await waitForReady();
     const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
@@ -1027,8 +1041,11 @@ describe("Capture — inactivity autosave (5s)", () => {
     await act(async () => {
       vi.advanceTimersByTime(1_000);
     });
-    await waitFor(() => {
-      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    await waitFor(async () => {
+      const dbInner = await openLensDB();
+      const rows = await listPending(dbInner, "dev");
+      dbInner.close();
+      expect(rows.length).toBe(1);
     });
     db = await openLensDB();
     const rows = await listPending(db, "dev");
@@ -1076,52 +1093,60 @@ describe("Capture — inactivity autosave (5s)", () => {
     db.close();
   });
 
-  it("second autosave after first fires (savingRef releases on success)", async () => {
-    // Regression for the data-loss bug reviewer caught on #123: the success
-    // path of save() never reset savingRef.current. With autosave, the user
-    // stays on the page after a save, so subsequent autosaves would always
-    // bail at the `if (savingRef.current) return` guard. Two autosaves means
-    // two enqueued notes, not one.
+  it("second autosave after first enqueues update-note (rc.10 draft-save)", async () => {
+    // rc.10 redesign: autosave is now a background draft. First fire
+    // enqueues create-note; second fire on the same mount enqueues
+    // update-note targeting the same localId — NOT a second create. The
+    // textarea content is preserved across autosaves so the user can keep
+    // typing into the same thought.
     renderAt("/capture");
     await waitForReady();
     const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
 
-    // First autosave.
+    // First autosave — enqueues create-note.
     await act(async () => {
       fireEvent.change(textarea, { target: { value: "first thought" } });
     });
     await act(async () => {
       vi.advanceTimersByTime(5_500);
     });
-    await waitFor(() => {
-      expect(useToastStore.getState().toasts.length).toBeGreaterThanOrEqual(1);
+    await waitFor(async () => {
+      const dbInner = await openLensDB();
+      const rows = await listPending(dbInner, "dev");
+      dbInner.close();
+      expect(rows.length).toBe(1);
     });
     let db = await openLensDB();
-    expect((await listPending(db, "dev")).length).toBe(1);
+    let rows = await listPending(db, "dev");
+    expect(rows[0]?.mutation.kind).toBe("create-note");
     db.close();
 
-    // After save the textarea is cleared by reset(); type again.
+    // Textarea content is preserved — user keeps editing the same thought.
+    expect(textarea.value).toBe("first thought");
+
+    // Type more, wait for second autosave — should enqueue update-note.
     await act(async () => {
-      fireEvent.change(textarea, { target: { value: "second thought" } });
+      fireEvent.change(textarea, { target: { value: "first thought, expanded" } });
     });
     await act(async () => {
       vi.advanceTimersByTime(5_500);
     });
-    await waitFor(() => {
-      // Two captures means two success toasts.
-      expect(useToastStore.getState().toasts.filter((t) => t.message === "Captured.").length).toBe(
-        2,
-      );
+    await waitFor(async () => {
+      const dbInner = await openLensDB();
+      const rs = await listPending(dbInner, "dev");
+      dbInner.close();
+      expect(rs.length).toBe(2);
     });
     db = await openLensDB();
-    const rows = await listPending(db, "dev");
-    expect(rows.length).toBe(2);
-    const contents = rows
-      .filter((r) => r.mutation.kind === "create-note")
-      .map((r) => (r.mutation.kind === "create-note" ? r.mutation.payload.content : ""));
-    expect(contents).toContain("first thought");
-    expect(contents).toContain("second thought");
+    rows = await listPending(db, "dev");
+    expect(rows[0]?.mutation.kind).toBe("create-note");
+    expect(rows[1]?.mutation.kind).toBe("update-note");
+    if (rows[1]?.mutation.kind === "update-note") {
+      expect(rows[1].mutation.payload.content).toBe("first thought, expanded");
+    }
     db.close();
+    // No "Captured." toasts during background drafts.
+    expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(false);
   });
 
   it("unmount-flush after a successful autosave still flushes new typed content", async () => {
@@ -1159,11 +1184,17 @@ describe("Capture — inactivity autosave (5s)", () => {
     await act(async () => {
       vi.advanceTimersByTime(5_500);
     });
-    await waitFor(() => {
-      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    // Wait for the first draft to land in the queue.
+    await waitFor(async () => {
+      const db = await openLensDB();
+      const rows = await listPending(db, "dev");
+      db.close();
+      expect(rows.length).toBe(1);
     });
 
-    // Type more (post-autosave-reset), then unmount before the next timer fires.
+    // Type more (the textarea is preserved across the autosave under
+    // rc.10's draft-save model — no clobber), then unmount before the
+    // next timer fires.
     await act(async () => {
       fireEvent.change(textarea, { target: { value: "post-autosave draft" } });
     });
@@ -1174,6 +1205,8 @@ describe("Capture — inactivity autosave (5s)", () => {
       expect(screen.getByText("unmounted")).toBeInTheDocument();
     });
 
+    // Unmount-flush should have written an update-note for the in-flight
+    // draft (NOT a fresh create-note that would duplicate the row).
     await waitFor(async () => {
       const db = await openLensDB();
       const rows = await listPending(db, "dev");
@@ -1182,11 +1215,14 @@ describe("Capture — inactivity autosave (5s)", () => {
     });
     const db = await openLensDB();
     const rows = await listPending(db, "dev");
-    const contents = rows
-      .filter((r) => r.mutation.kind === "create-note")
-      .map((r) => (r.mutation.kind === "create-note" ? r.mutation.payload.content : ""));
-    expect(contents).toContain("first");
-    expect(contents).toContain("post-autosave draft");
+    expect(rows[0]?.mutation.kind).toBe("create-note");
+    expect(rows[1]?.mutation.kind).toBe("update-note");
+    if (rows[0]?.mutation.kind === "create-note") {
+      expect(rows[0].mutation.payload.content).toBe("first");
+    }
+    if (rows[1]?.mutation.kind === "update-note") {
+      expect(rows[1].mutation.payload.content).toBe("post-autosave draft");
+    }
     db.close();
   });
 });

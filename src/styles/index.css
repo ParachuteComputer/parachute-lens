@@ -30,12 +30,25 @@
 }
 
 /* Explicit text-size overrides. `default` removes the attribute entirely
-   so we don't need a third block. */
+   so we don't need a third block.
+
+   rc.10: the original rc.6 scope was too narrow — only `.prose-note` and
+   CodeMirror consumed the `--font-size-*` variables, so the rest of the
+   app (header, lists, Settings, capture textarea, bottom-tab) didn't
+   scale. Aaron reported Larger/Largest "appears to do nothing" while on
+   Settings. Adding `font-size` on the html root makes every rem-based
+   Tailwind size scale app-wide (Tailwind sizes are rem; rem is relative
+   to root font-size). The prose / editor variables stay so the reader
+   and editor can scale slightly MORE than the chrome — `Larger`'s 1.125
+   prose multiplied by 17.5px root = ~19.7px reader text vs ~17.5px
+   chrome, which feels right (read-content larger than navigation). */
 :root[data-text-size="larger"] {
+  font-size: 17.5px;
   --font-size-prose: 1.125rem;
   --font-size-editor: 16px;
 }
 :root[data-text-size="largest"] {
+  font-size: 19px;
   --font-size-prose: 1.25rem;
   --font-size-editor: 18px;
 }
