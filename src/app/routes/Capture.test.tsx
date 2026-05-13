@@ -44,6 +44,16 @@ vi.mock("@/lib/sync", async () => {
   };
 });
 
+// Schema-ensure (notes#126 reshape) calls a real `PUT /api/tags/:name` via
+// the active vault client. Capture tests don't stub fetch at the network
+// boundary — they stub at the `enqueue` boundary — so the schema-ensure
+// fetch would hang the test environment for 10s+ per case. Stub the
+// ensure module to a no-op here; schema-ensure has its own focused tests
+// in `schema-ensure.test.ts` that exercise the real path.
+vi.mock("@/lib/vault/schema-ensure", () => ({
+  ensureNotesSchema: vi.fn(async () => {}),
+}));
+
 vi.mock("@/lib/capture/recorder", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/capture/recorder")>("@/lib/capture/recorder");
@@ -214,7 +224,8 @@ describe("Capture (unified)", () => {
     // on mount, so the payload's path is `Notes/<YYYY>/<MM-DD>/<HH-MM-SS>`.
     // Asserting on the prefix keeps the test stable across clock minutes.
     expect(rows[0].mutation.payload.path).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
-    expect(rows[0].mutation.payload.tags).toEqual(["quick", "idea"]);
+    // notes#126 reshape: default captureText role is "capture/text" (was "quick").
+    expect(rows[0].mutation.payload.tags).toEqual(["capture/text", "idea"]);
     db.close();
   });
 
@@ -260,13 +271,15 @@ describe("Capture (unified)", () => {
     ) {
       throw new Error("wrong mutation shape");
     }
-    // With notes#126's pre-fill, pathOverride is seeded with `quickPath()`
-    // on mount and wins over the audio-only memoPath fallback. Audio-only
-    // memos now land under Notes/<date>/<time> by default. To keep them
-    // in Memos/, the user can clear the path input (then memoPath kicks
-    // in — see the "audio-only with cleared path" test below).
+    // With notes#126's pre-fill + option (d), audio-only captures also
+    // land under Notes/<date>/<time> by default. The `memoPath()`
+    // fallback was dropped in the reshape — one canonical Notes-side
+    // rule, no phase-dependent forks. Clearing the path reverts to the
+    // same generated value (see the "audio-only with cleared path" test
+    // below).
     expect(create.mutation.payload.path).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
-    expect(create.mutation.payload.tags).toEqual(["voice"]);
+    // notes#126 reshape: default captureVoice role is "capture/voice" (was "voice").
+    expect(create.mutation.payload.tags).toEqual(["capture/voice"]);
     expect(create.mutation.payload.content).toContain("_Transcript pending._");
     expect(create.mutation.payload.content).toContain("![[");
     expect(link.mutation.pathRef).toBe(`blob:${upload.mutation.blobId}`);
@@ -313,7 +326,8 @@ describe("Capture (unified)", () => {
     expect(create.mutation.payload.path).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
     expect(create.mutation.payload.content).toContain("context for the recording #meeting");
     expect(create.mutation.payload.content).toContain("![[");
-    expect(create.mutation.payload.tags).toEqual(["quick", "voice", "meeting"]);
+    // notes#126 reshape: both default capture roles are hierarchical now.
+    expect(create.mutation.payload.tags).toEqual(["capture/text", "capture/voice", "meeting"]);
     db.close();
   });
 
@@ -418,7 +432,7 @@ describe("Capture (unified)", () => {
     const rows = await listPending(db, "dev");
     if (rows[0]?.mutation.kind === "create-note") {
       expect(rows[0].mutation.payload.content).toBe("walked away mid-thought");
-      expect(rows[0].mutation.payload.tags).toEqual(["quick"]);
+      expect(rows[0].mutation.payload.tags).toEqual(["capture/text"]);
     }
     db.close();
   });
@@ -655,12 +669,17 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     const payload = rows[0].mutation.payload;
     expect(payload.path).toBe("Daily/2026-05-12");
     expect(payload.metadata).toEqual({ summary: "first pass" });
-    expect(payload.tags).toEqual(["quick", "wip"]);
+    expect(payload.tags).toEqual(["capture/text", "wip"]);
     expect(payload.content).toBe("lab notes #wip");
     db.close();
   });
 
-  it("Empty path override → payload omits `path` (vault auto-assigns)", async () => {
+  it("Empty path override reverts to the mount-time generated path (option d)", async () => {
+    // notes#126 reshape, option (d): clearing the path input never falls
+    // back to vault-auto-assign. The generated `quickPath()` value captured
+    // on mount is the truth-default; emptying the input reverts to that
+    // same value at save time. Aaron's framing: "vault auto-assigns" hides
+    // what's happening, so empty-input must not surface that magic again.
     renderAt("/capture");
     await waitForReady();
     const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
@@ -671,6 +690,9 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
 
     const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
     const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    const generated = pathInput.value;
+    expect(generated).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
+
     await act(async () => {
       fireEvent.change(textarea, { target: { value: "no path here" } });
       // Whitespace-only is treated as empty per the trim().
@@ -688,12 +710,13 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     const db = await openLensDB();
     const rows = await listPending(db, "dev");
     if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
-    expect(rows[0].mutation.payload.path).toBeUndefined();
+    // Empty input → mount-time generated value, not undefined.
+    expect(rows[0].mutation.payload.path).toBe(generated);
     expect(rows[0].mutation.payload.metadata).toBeUndefined();
     db.close();
   });
 
-  it("Path override wins over the audio-only memo path", async () => {
+  it("Path override wins over the generated default (audio-only)", async () => {
     renderAt("/capture");
     await waitForReady();
     const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
@@ -776,12 +799,12 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     db.close();
   });
 
-  it("Audio-only with manually cleared path falls back to memoPath (rc.6 escape valve)", async () => {
-    // notes#126's pre-fill is the new default, but clearing the path
-    // input is the operator's signal of "I want the historical rule".
-    // For audio-only captures, that rule is `memoPath()` → `Memos/`.
-    // This test pins the escape valve so a future refactor doesn't
-    // delete the fallback.
+  it("Audio-only with manually cleared path reverts to the generated path (option d)", async () => {
+    // notes#126 reshape, option (d): clearing the path is NOT an escape
+    // hatch back to historical rules. It reverts to the mount-time
+    // `quickPath()` value. One canonical Notes-side rule, no phase-
+    // dependent forks. Audio captures via this path land under
+    // `Notes/<date>/<time>` just like text captures.
     renderAt("/capture");
     await waitForReady();
     const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
@@ -791,6 +814,9 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     });
 
     const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    const generated = pathInput.value;
+    expect(generated).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
+
     await act(async () => {
       fireEvent.change(pathInput, { target: { value: "" } });
     });
@@ -819,8 +845,93 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     const rows = await listPending(db, "dev");
     const create = rows.find((r) => r.mutation.kind === "create-note")!;
     if (create.mutation.kind !== "create-note") throw new Error("expected create-note");
-    expect(create.mutation.payload.path).toMatch(/^Memos\//);
+    expect(create.mutation.payload.path).toBe(generated);
     db.close();
+  });
+
+  it("Regenerates the path on reset when operator hasn't edited (notes#126 collision fix)", async () => {
+    // Reviewer raised this in #130: `quickPath()` is second-granularity,
+    // so two captures within the same second produce the same path —
+    // collision. The reshape regenerates on `reset()` AFTER successful
+    // save, but only when the operator hasn't manually edited. We need
+    // wall-clock time to actually move BEFORE the reset's quickPath()
+    // call to see a different value — use fake timers and advance the
+    // clock *before* the save click so reset() reads the advanced time.
+    const tFirst = new Date(2026, 4, 12, 14, 30, 5).getTime();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(tFirst);
+    try {
+      renderAt("/capture");
+      await waitForReady();
+      const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
+      await act(async () => {
+        detailsEl.open = true;
+        detailsEl.dispatchEvent(new Event("toggle"));
+      });
+
+      const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+      const first = pathInput.value;
+      expect(first).toBe("Notes/2026/05-12/14-30-05");
+
+      const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+      await act(async () => {
+        fireEvent.change(textarea, { target: { value: "thought one" } });
+      });
+
+      // Advance wall-clock BEFORE the click so reset()'s quickPath() reads
+      // the new value. Two captures within the same wall-clock second is
+      // the collision case; the regen-on-reset is the fix.
+      await act(async () => {
+        vi.setSystemTime(tFirst + 7_000);
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /^capture$/i }));
+      });
+      await waitFor(() => {
+        expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+      });
+
+      // After reset(), the input value should have regenerated.
+      const second = pathInput.value;
+      expect(second).toBe("Notes/2026/05-12/14-30-12");
+      expect(second).not.toBe(first);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Preserves a user-edited path across reset (no regen)", async () => {
+    // Counter-test for the collision fix: if the operator typed an
+    // explicit path, they're capturing multiple notes into the same
+    // place (e.g. `Daily/2026-05-12`). Don't fight them.
+    renderAt("/capture");
+    await waitForReady();
+    const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
+    await act(async () => {
+      detailsEl.open = true;
+      detailsEl.dispatchEvent(new Event("toggle"));
+    });
+
+    const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    const userPath = "Daily/2026-05-12";
+    await act(async () => {
+      fireEvent.change(pathInput, { target: { value: userPath } });
+    });
+
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "first daily" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^capture$/i }));
+    });
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    });
+
+    // After reset, the user-typed path should still be in the input.
+    expect(pathInput.value).toBe(userPath);
   });
 });
 

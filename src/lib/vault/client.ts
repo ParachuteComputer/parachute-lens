@@ -321,6 +321,24 @@ export class VaultClient {
     });
   }
 
+  // Upsert a tag-identity row. `description`, `parent_names`, `fields`,
+  // `relationships` are all field-merged on the vault side — omitted keys
+  // preserve prior values, explicit `null` clears them. Idempotent: calling
+  // with the same payload as-stored is a no-op write. Used by the surface
+  // schema-ensure path (lib/vault/schema.ts → schema-ensure.ts).
+  async updateTag(
+    name: string,
+    body: {
+      description?: string | null;
+      parent_names?: string[] | null;
+    },
+  ): Promise<void> {
+    await this.request<undefined>(`/api/tags/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  }
+
   async renameTag(oldName: string, newName: string): Promise<{ renamed: number }> {
     return this.request<{ renamed: number }>(`/api/tags/${encodeURIComponent(oldName)}/rename`, {
       method: "POST",
