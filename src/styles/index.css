@@ -20,6 +20,24 @@
   --color-border-light: #ece9e2;
   --color-card: #ffffff;
   --color-card-hover: #fefdfb;
+
+  /* View-level text-size knob (lib/text-size.ts). Default values; the
+     `:root[data-text-size="…"]` blocks below override for the two larger
+     steps. `--font-size-editor` drives CodeMirror's hardcoded fontSize via
+     a CSS variable so the editor scales together with prose. */
+  --font-size-prose: 1rem;
+  --font-size-editor: 14px;
+}
+
+/* Explicit text-size overrides. `default` removes the attribute entirely
+   so we don't need a third block. */
+:root[data-text-size="larger"] {
+  --font-size-prose: 1.125rem;
+  --font-size-editor: 16px;
+}
+:root[data-text-size="largest"] {
+  --font-size-prose: 1.25rem;
+  --font-size-editor: 18px;
 }
 
 /* System dark — only when the user hasn't picked explicitly. */
@@ -77,7 +95,7 @@ body {
 
 .prose-note {
   color: var(--color-fg);
-  font-size: 1rem;
+  font-size: var(--font-size-prose);
   line-height: 1.7;
 }
 .prose-note h1,

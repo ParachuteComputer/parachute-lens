@@ -20,7 +20,10 @@ const lensHighlight = HighlightStyle.define([
 const lensTheme = EditorView.theme({
   "&": {
     fontFamily: "var(--font-mono)",
-    fontSize: "14px",
+    // Reads from the text-size knob (lib/text-size.ts → styles/index.css)
+    // so editor scales together with the markdown preview. Falls back to
+    // 14px on legacy stylesheets that pre-date the variable.
+    fontSize: "var(--font-size-editor, 14px)",
     backgroundColor: "var(--color-card)",
     color: "var(--color-fg)",
     height: "100%",

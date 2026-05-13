@@ -4,13 +4,14 @@ import { QuickSwitchMount } from "@/components/QuickSwitchMount";
 import { Toaster } from "@/components/Toaster";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { VaultStatusBanner } from "@/components/VaultStatusBanner";
+import { applyTextSize, readStoredTextSize } from "@/lib/text-size";
 import { useVaultStore } from "@/lib/vault";
 import { useCrossTabVaultSync } from "@/lib/vault/cross-tab-sync";
 import { useActiveVaultClient } from "@/lib/vault/queries";
 import { useReachabilityProbe } from "@/lib/vault/reachability-probe";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { SyncProvider } from "@/providers/SyncProvider";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router";
 import { Home } from "./routes/Home";
 import { Notes } from "./routes/Notes";
@@ -95,6 +96,12 @@ export function App() {
   // outlives every route transition. Same vault state surfaces in every tab
   // without a refresh.
   useCrossTabVaultSync();
+  // Apply the stored text-size on mount. Wired here rather than inline in
+  // Settings so the preference takes effect on every route — Settings is
+  // where you change it, App is where it lives.
+  useEffect(() => {
+    applyTextSize(readStoredTextSize());
+  }, []);
   return (
     <QueryProvider>
       <SyncProvider>
