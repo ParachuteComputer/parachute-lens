@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Capture path empty-input reverts to generated (option d)
+
+- **fix(capture): empty path input reverts to the generated value, never
+  vault-picks (0.3.15-rc.8).** Reviewer follow-up on notes#126 after PR
+  #130 merged. Aaron's whole framing was that "vault auto-assigns" hides
+  what's happening; rc.7 kept that escape valve when the operator
+  cleared the path input. This PR removes it: clearing the input now
+  reverts to the same mount-time `quickPath()` value the operator
+  originally saw. One canonical Notes-side rule, no phase-dependent
+  forks. The `memoPath()` fallback for audio-only with no override
+  becomes unreachable under this rule and is dropped — audio captures
+  with a cleared path land at the same generated `Notes/<date>/<time>`
+  as text captures. The save-path resolution becomes a one-liner:
+  `pathOverride.trim() || generatedPathRef.current`. Two existing tests
+  flipped to assert the new semantics ("empty path reverts to
+  generated", "audio-only cleared-path reverts to generated"); no new
+  tests needed — the option-(a) shape is no longer reachable.
+
 ### Text-size shortcuts + header control; Capture path pre-fill
 
 - **feat(ui): accessible text-size (shortcuts + header) + locally-generated

@@ -4,7 +4,6 @@ import {
   type RecorderController,
   createRecorder,
   memoFilename,
-  memoPath,
   pickMimeType,
   quickPath,
   requestMic,
@@ -79,13 +78,18 @@ export function Capture({
   // operator who needs to override the path or set a one-line summary
   // opens this and gets the structured form without leaving Capture.
   //
-  // pathOverride is now pre-filled with `quickPath()` (notes#126) — the
+  // pathOverride is pre-filled with `quickPath()` (notes#126) — the
   // generated path is Notes-side, deterministic from mount time, and
-  // visible to the operator the moment they expand More fields. They can
-  // accept it, edit it, or clear it. Clearing falls back to "let the
-  // vault auto-assign" (empty string preserves the rc.5 escape valve).
+  // visible to the operator the moment they expand More fields. Clearing
+  // the input reverts to the same generated value at save time (option
+  // (d) — Aaron's whole feedback was that "vault auto-assigns" hides
+  // what's happening, so empty-input must never surface that magic
+  // again). The generated path is captured in a ref so subsequent saves
+  // on the same mount land at the same place — the user typed against
+  // it knowing where it would land.
   const [moreFieldsOpen, setMoreFieldsOpen] = useState(moreFieldsOpenDefault);
-  const [pathOverride, setPathOverride] = useState(() => quickPath());
+  const generatedPathRef = useRef(quickPath());
+  const [pathOverride, setPathOverride] = useState(() => generatedPathRef.current);
   const [summary, setSummary] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -238,9 +242,11 @@ export function Capture({
     const localId = newLocalId();
 
     // "More fields" overrides: trim once here so empty-after-trim values
-    // don't end up as `path: ""` (vault would reject) or
-    // `metadata.summary: ""` (worthless metadata noise).
-    const pathOverrideValue = pathOverride.trim();
+    // Empty path reverts to the mount-time generated value (notes#126
+    // option d) — clearing the input never hands path-generation back
+    // to the vault. Trim summary so empty input doesn't write
+    // `metadata.summary: ""` noise.
+    const pathToSave = pathOverride.trim() || generatedPathRef.current;
     const summaryValue = summary.trim();
     const metadata = summaryValue ? { summary: summaryValue } : undefined;
 
@@ -256,11 +262,10 @@ export function Capture({
         const body = hasText
           ? `${content.trim()}\n\n_Transcript pending._\n\n![[${filename}]]\n`
           : `_Transcript pending._\n\n![[${filename}]]\n`;
-        // Path precedence: explicit override > audio-only memo path > let
-        // the vault auto-assign. Override wins on every shape so the user
-        // can place an audio note anywhere they want, including the typed
-        // case (where today we'd let the vault pick).
-        const path = pathOverrideValue || (hasText ? undefined : memoPath(recordedAt));
+        // One canonical Notes-side path rule now (option d). Path-generation
+        // never falls back to vault-side magic — what the operator saw in
+        // the More-fields panel is what gets written.
+        const path = pathToSave;
 
         if (!blobStore) throw new Error("blob store missing");
         await blobStore.put(blobId, audio.data, audio.mimeType, activeVault.id);
@@ -271,7 +276,7 @@ export function Capture({
             localId,
             payload: {
               content: body,
-              ...(path ? { path } : {}),
+              path,
               ...(finalTags.length ? { tags: finalTags } : {}),
               ...(metadata ? { metadata } : {}),
             },
@@ -308,7 +313,7 @@ export function Capture({
             localId,
             payload: {
               content,
-              ...(pathOverrideValue ? { path: pathOverrideValue } : {}),
+              path: pathToSave,
               ...(finalTags.length ? { tags: finalTags } : {}),
               ...(metadata ? { metadata } : {}),
             },
@@ -411,7 +416,10 @@ export function Capture({
       const all = Array.from(
         new Set([roles.captureText, ...explicit, ...extracted].filter((t) => t.length > 0)),
       );
-      const pathValue = pathOverride.trim();
+      // Same path-resolution rule as save() (notes#126 option d): trimmed
+      // override OR the mount-time generated path. Never write
+      // `path: undefined` to the queue — the path is always Notes-side.
+      const pathValue = pathOverride.trim() || generatedPathRef.current;
       const summaryValue = summary.trim();
       // Swallow rejections here — we're in the unmount path, so there's no
       // user-visible surface to report a failure (the toaster has already
@@ -426,7 +434,7 @@ export function Capture({
           localId: newLocalId(),
           payload: {
             content,
-            ...(pathValue ? { path: pathValue } : {}),
+            path: pathValue,
             ...(all.length ? { tags: all } : {}),
             ...(summaryValue ? { metadata: { summary: summaryValue } } : {}),
           },
@@ -549,7 +557,7 @@ export function Capture({
                 type="text"
                 value={pathOverride}
                 onChange={(e) => setPathOverride(e.target.value)}
-                placeholder="(blank → vault picks)"
+                placeholder="(blank → uses generated path)"
                 aria-label="Path override"
                 className="rounded-md border border-border bg-card px-2.5 py-1.5 font-mono text-xs text-fg focus:border-accent focus:outline-none"
               />

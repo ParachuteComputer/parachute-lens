@@ -260,11 +260,11 @@ describe("Capture (unified)", () => {
     ) {
       throw new Error("wrong mutation shape");
     }
-    // With notes#126's pre-fill, pathOverride is seeded with `quickPath()`
-    // on mount and wins over the audio-only memoPath fallback. Audio-only
-    // memos now land under Notes/<date>/<time> by default. To keep them
-    // in Memos/, the user can clear the path input (then memoPath kicks
-    // in — see the "audio-only with cleared path" test below).
+    // With notes#126's pre-fill + option (d), audio-only captures also
+    // land under Notes/<date>/<time> by default. The `memoPath()`
+    // fallback was dropped — one canonical Notes-side rule, no phase-
+    // dependent forks. Clearing the path reverts to the same generated
+    // value (see the "audio-only with cleared path" test below).
     expect(create.mutation.payload.path).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
     expect(create.mutation.payload.tags).toEqual(["voice"]);
     expect(create.mutation.payload.content).toContain("_Transcript pending._");
@@ -660,7 +660,13 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     db.close();
   });
 
-  it("Empty path override → payload omits `path` (vault auto-assigns)", async () => {
+  it("Empty path override reverts to the mount-time generated path (notes#126 option d)", async () => {
+    // Option (d) per team-lead — clearing the path input never falls back
+    // to vault-auto-assign. The generated `quickPath()` value captured on
+    // mount is the truth-default; the operator can edit it, but emptying
+    // the input reverts to that same value at save time. Aaron's whole
+    // framing: "vault auto-assigns" hides what's happening, so an empty
+    // input must not surface that magic again.
     renderAt("/capture");
     await waitForReady();
     const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
@@ -671,6 +677,10 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
 
     const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
     const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    // Capture the mount-time generated path BEFORE clearing the input.
+    const generated = pathInput.value;
+    expect(generated).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
+
     await act(async () => {
       fireEvent.change(textarea, { target: { value: "no path here" } });
       // Whitespace-only is treated as empty per the trim().
@@ -688,12 +698,13 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     const db = await openLensDB();
     const rows = await listPending(db, "dev");
     if (rows[0]?.mutation.kind !== "create-note") throw new Error("expected create-note");
-    expect(rows[0].mutation.payload.path).toBeUndefined();
+    // The saved path is the mount-time generated value, not undefined.
+    expect(rows[0].mutation.payload.path).toBe(generated);
     expect(rows[0].mutation.payload.metadata).toBeUndefined();
     db.close();
   });
 
-  it("Path override wins over the audio-only memo path", async () => {
+  it("Path override wins over the generated default (audio-only)", async () => {
     renderAt("/capture");
     await waitForReady();
     const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
@@ -776,12 +787,12 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     db.close();
   });
 
-  it("Audio-only with manually cleared path falls back to memoPath (rc.6 escape valve)", async () => {
-    // notes#126's pre-fill is the new default, but clearing the path
-    // input is the operator's signal of "I want the historical rule".
-    // For audio-only captures, that rule is `memoPath()` → `Memos/`.
-    // This test pins the escape valve so a future refactor doesn't
-    // delete the fallback.
+  it("Audio-only with manually cleared path reverts to the generated path (option d)", async () => {
+    // notes#126 option (d) — clearing the path is NOT an escape hatch
+    // back to historical rules (`memoPath()` / vault-picks). It reverts
+    // to the mount-time `quickPath()` value. One canonical Notes-side
+    // rule, no phase-dependent forks. Audio captures via this path land
+    // under `Notes/<date>/<time>` just like text captures do.
     renderAt("/capture");
     await waitForReady();
     const detailsEl = screen.getByText(/^more fields$/i).closest("details")!;
@@ -791,6 +802,9 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     });
 
     const pathInput = screen.getByLabelText(/path override/i) as HTMLInputElement;
+    const generated = pathInput.value;
+    expect(generated).toMatch(/^Notes\/\d{4}\/\d{2}-\d{2}\/\d{2}-\d{2}-\d{2}$/);
+
     await act(async () => {
       fireEvent.change(pathInput, { target: { value: "" } });
     });
@@ -819,7 +833,7 @@ describe("Capture — More fields panel (path + summary overrides)", () => {
     const rows = await listPending(db, "dev");
     const create = rows.find((r) => r.mutation.kind === "create-note")!;
     if (create.mutation.kind !== "create-note") throw new Error("expected create-note");
-    expect(create.mutation.payload.path).toMatch(/^Memos\//);
+    expect(create.mutation.payload.path).toBe(generated);
     db.close();
   });
 });
