@@ -1,3 +1,9 @@
+// @vitest-environment jsdom
+// Tests touch `localStorage` + `document.documentElement` — the vitest config
+// already defaults to jsdom for the whole project, but this pragma makes the
+// dependency explicit so a stray `bun test` invocation (which bypasses
+// vitest) or a per-test env override doesn't silently break with
+// "localStorage is not defined".
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TEXT_SIZE_STORAGE_KEY,

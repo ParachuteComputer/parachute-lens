@@ -867,6 +867,120 @@ describe("Capture — inactivity autosave (5s)", () => {
     expect((await listPending(db, "dev")).length).toBe(0);
     db.close();
   });
+
+  it("second autosave after first fires (savingRef releases on success)", async () => {
+    // Regression for the data-loss bug reviewer caught on #123: the success
+    // path of save() never reset savingRef.current. With autosave, the user
+    // stays on the page after a save, so subsequent autosaves would always
+    // bail at the `if (savingRef.current) return` guard. Two autosaves means
+    // two enqueued notes, not one.
+    renderAt("/capture");
+    await waitForReady();
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+
+    // First autosave.
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "first thought" } });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(5_500);
+    });
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.length).toBeGreaterThanOrEqual(1);
+    });
+    let db = await openLensDB();
+    expect((await listPending(db, "dev")).length).toBe(1);
+    db.close();
+
+    // After save the textarea is cleared by reset(); type again.
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "second thought" } });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(5_500);
+    });
+    await waitFor(() => {
+      // Two captures means two success toasts.
+      expect(useToastStore.getState().toasts.filter((t) => t.message === "Captured.").length).toBe(
+        2,
+      );
+    });
+    db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    expect(rows.length).toBe(2);
+    const contents = rows
+      .filter((r) => r.mutation.kind === "create-note")
+      .map((r) => (r.mutation.kind === "create-note" ? r.mutation.payload.content : ""));
+    expect(contents).toContain("first thought");
+    expect(contents).toContain("second thought");
+    db.close();
+  });
+
+  it("unmount-flush after a successful autosave still flushes new typed content", async () => {
+    // Companion regression: after an autosave succeeds, the user types more
+    // and navigates away. If savingRef leaks, the unmount-flush silently
+    // drops the new content. Uses the Toggler pattern (rather than RTL's
+    // `unmount()`) so the SyncProvider's IDB handle stays open while the
+    // unmount-flush enqueue runs — same shape as the existing
+    // "unmount with dirty text" test for the same reason.
+    function Toggler() {
+      const [mounted, setMounted] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setMounted(false)}>
+            unmount
+          </button>
+          {mounted ? <Capture /> : <div>unmounted</div>}
+        </>
+      );
+    }
+    render(
+      <MemoryRouter>
+        <Toggler />
+      </MemoryRouter>,
+      { wrapper: Wrapper },
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText(/capture content/i)).toBeInTheDocument();
+    });
+    const textarea = screen.getByLabelText(/capture content/i) as HTMLTextAreaElement;
+
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "first" } });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(5_500);
+    });
+    await waitFor(() => {
+      expect(useToastStore.getState().toasts.some((t) => t.message === "Captured.")).toBe(true);
+    });
+
+    // Type more (post-autosave-reset), then unmount before the next timer fires.
+    await act(async () => {
+      fireEvent.change(textarea, { target: { value: "post-autosave draft" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "unmount" }));
+    });
+    await waitFor(() => {
+      expect(screen.getByText("unmounted")).toBeInTheDocument();
+    });
+
+    await waitFor(async () => {
+      const db = await openLensDB();
+      const rows = await listPending(db, "dev");
+      db.close();
+      expect(rows.length).toBe(2);
+    });
+    const db = await openLensDB();
+    const rows = await listPending(db, "dev");
+    const contents = rows
+      .filter((r) => r.mutation.kind === "create-note")
+      .map((r) => (r.mutation.kind === "create-note" ? r.mutation.payload.content : ""));
+    expect(contents).toContain("first");
+    expect(contents).toContain("post-autosave draft");
+    db.close();
+  });
 });
 
 describe("extractHashtags", () => {

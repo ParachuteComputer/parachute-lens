@@ -54,10 +54,11 @@ export function Settings() {
 // lib/text-size.ts; App.tsx already applies the stored value on mount, so
 // this section's job is just "change + save".
 function TextSizeSection() {
-  const [size, setSize] = useState<TextSize>("default");
-  useEffect(() => {
-    setSize(readStoredTextSize());
-  }, []);
+  // Lazy initializer reads localStorage during the first render, not in a
+  // useEffect afterward — without this the radio briefly renders "Default"
+  // before the effect overwrites with the stored value, which the reviewer
+  // on #123 flagged as a visible flash.
+  const [size, setSize] = useState<TextSize>(() => readStoredTextSize());
 
   const onChange = (next: TextSize) => {
     setSize(next);

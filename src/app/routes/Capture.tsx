@@ -314,6 +314,12 @@ export function Capture({
       void engine?.runOnce();
       pushToast(audio ? "Captured — syncing audio." : "Captured.", "success");
       reset();
+      // Critical for autosave: the user stays on the page after a successful
+      // autosave, so this in-flight flag has to release or every subsequent
+      // autosave AND the unmount-flush silently bail. Pre-autosave the manual
+      // Capture click was the only entry point and a fresh mount handled the
+      // reset implicitly; with the 5s timer the mount is reused across saves.
+      savingRef.current = false;
     } catch (e) {
       pushToast(e instanceof Error ? `Capture failed: ${e.message}` : "Capture failed.", "error");
       // Save failed — release the in-flight flag so the unmount-flush will
