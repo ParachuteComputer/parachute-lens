@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Text-size ramp retune
+
+- **tune(ui): widen text-size ramp + bump default (0.3.15-rc.11).**
+  Aaron's testing of rc.10 surfaced two complaints: default felt small
+  for a reading-first app (16px root × 1rem prose = 16px reader), and
+  largest was a modest ceiling. Retune to a wider ramp Aaron picked
+  from a three-option comparison. Rendered px per step:
+
+  | step      | root  | `.prose-note` | CodeMirror editor |
+  |-----------|-------|---------------|-------------------|
+  | default   | 16px  | 18px          | 15px              |
+  | larger    | 18px  | 22px          | 18px              |
+  | largest   | 22px  | 26px          | 22px              |
+
+  Default `--font-size-prose` bumped from `1rem` → `18px` (absolute, so
+  the rendered target is unambiguous). Defaults for editor 14 → 15.
+  Larger / largest blocks retuned to hit the px targets via absolute
+  values on prose + editor (no rem×root math to verify). rc.10's CSS
+  architecture (root font-size scales chrome via rem cascade, prose +
+  editor scale independently) is unchanged — only the rendered ramp
+  moves.
+
+  No test changes — `TextSizeControl.test.tsx` asserts attribute
+  manipulation, not px values, so it passes unchanged. Intentional:
+  pinning px would lock the implementation to numbers Aaron will
+  likely keep iterating.
+
 ### Capture draft-save + global text-size zoom
 
 - **fix(capture): autosave is now a background draft, not a finalize-and-

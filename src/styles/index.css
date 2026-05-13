@@ -21,36 +21,45 @@
   --color-card: #ffffff;
   --color-card-hover: #fefdfb;
 
-  /* View-level text-size knob (lib/text-size.ts). Default values; the
-     `:root[data-text-size="…"]` blocks below override for the two larger
-     steps. `--font-size-editor` drives CodeMirror's hardcoded fontSize via
-     a CSS variable so the editor scales together with prose. */
-  --font-size-prose: 1rem;
-  --font-size-editor: 14px;
+  /* View-level text-size knob (lib/text-size.ts). Defaults below; the
+     `:root[data-text-size="…"]` blocks override for the two larger
+     steps. `--font-size-editor` drives CodeMirror's hardcoded fontSize
+     via a CSS variable so the editor scales with prose.
+
+     rc.11 retune (Aaron's testing of rc.10): default felt small for a
+     reading-first app, and largest was a modest ceiling. Defaults bumped
+     from 16/14 → 18/15 (reader/editor); the two override steps widen
+     the ramp meaningfully. Absolute px on prose so the rendered size
+     matches the target unambiguously — no rem×root math to verify. */
+  --font-size-prose: 18px;
+  --font-size-editor: 15px;
 }
 
 /* Explicit text-size overrides. `default` removes the attribute entirely
    so we don't need a third block.
 
-   rc.10: the original rc.6 scope was too narrow — only `.prose-note` and
-   CodeMirror consumed the `--font-size-*` variables, so the rest of the
-   app (header, lists, Settings, capture textarea, bottom-tab) didn't
-   scale. Aaron reported Larger/Largest "appears to do nothing" while on
-   Settings. Adding `font-size` on the html root makes every rem-based
-   Tailwind size scale app-wide (Tailwind sizes are rem; rem is relative
-   to root font-size). The prose / editor variables stay so the reader
-   and editor can scale slightly MORE than the chrome — `Larger`'s 1.125
-   prose multiplied by 17.5px root = ~19.7px reader text vs ~17.5px
-   chrome, which feels right (read-content larger than navigation). */
+   Ramp (rendered px Aaron picked, rc.11):
+
+     step      | root  | prose (.prose-note) | editor (CodeMirror)
+     ----------|-------|---------------------|--------------------
+     default   | 16px  | 18px                | 15px
+     larger    | 18px  | 22px                | 18px
+     largest   | 22px  | 26px                | 22px
+
+   The original rc.6 scope only touched `.prose-note` + CodeMirror via
+   the `--font-size-*` variables, so chrome (header, lists, Settings,
+   capture, bottom-tab) didn't scale. rc.10 added `font-size` on the
+   html root so the rem-based Tailwind sizes scale app-wide. rc.11
+   keeps that architecture and just retunes the rendered ramp. */
 :root[data-text-size="larger"] {
-  font-size: 17.5px;
-  --font-size-prose: 1.125rem;
-  --font-size-editor: 16px;
+  font-size: 18px;
+  --font-size-prose: 22px;
+  --font-size-editor: 18px;
 }
 :root[data-text-size="largest"] {
-  font-size: 19px;
-  --font-size-prose: 1.25rem;
-  --font-size-editor: 18px;
+  font-size: 22px;
+  --font-size-prose: 26px;
+  --font-size-editor: 22px;
 }
 
 /* System dark — only when the user hasn't picked explicitly. */
