@@ -52,6 +52,25 @@ export async function ensureNotesSchema(vaultId: string, client: VaultClient): P
   }
 }
 
+// User-driven fix path (notes#129). Always runs the full sweep — bypasses
+// the per-session guard, because the user is explicitly asking us to ensure
+// the schema (Settings panel button or connect-time banner action). Marks
+// the vault as ensured on success so subsequent first-captures don't redo
+// the work. Throws on failure so the UI can show "fix failed" rather than
+// silently swallowing (unlike `ensureNotesSchema` which is fire-and-forget
+// from capture's save path).
+export async function fixSchema(vaultId: string, client: VaultClient): Promise<void> {
+  for (const decl of NOTES_REQUIRED_SCHEMA.tags) {
+    await client.updateTag(decl.name, {
+      description: decl.description,
+      ...(decl.parent_names ? { parent_names: decl.parent_names } : {}),
+    });
+  }
+  // Fix succeeded → in-session "we ensured this vault" is now true. Skip
+  // re-running on the next capture.
+  ensuredVaults.add(vaultId);
+}
+
 // Test-only escape hatch — resets the in-session guard so a test can
 // exercise the ensure-once behavior across multiple captures without
 // reloading the module.

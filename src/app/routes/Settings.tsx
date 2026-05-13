@@ -18,6 +18,11 @@ import {
   useTags,
   useVaultStore,
 } from "@/lib/vault";
+import { useActiveVaultClient } from "@/lib/vault/queries";
+import type { TagAuditRow } from "@/lib/vault/schema-audit";
+import { useSchemaAuditStore } from "@/lib/vault/schema-audit-store";
+import { useSchemaBannerStore } from "@/lib/vault/schema-banner-store";
+import { fixSchema } from "@/lib/vault/schema-ensure";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router";
 
@@ -41,11 +46,156 @@ export function Settings() {
         </p>
       </header>
 
+      <VaultSchemaSection vaultId={activeVault.id} />
       <TextSizeSection />
       <PathTreeSection vaultId={activeVault.id} />
       <TagRolesSection vaultId={activeVault.id} />
       <InstallStateSection />
     </div>
+  );
+}
+
+// "Vault schema" section (notes#129): surfaces the audit result for the
+// active vault + offers a one-click fix. The audit runs automatically at
+// the App root via `SchemaAuditRunnerMount`; this section reads the cached
+// result and exposes a manual Refresh. The fix path uses `fixSchema` from
+// schema-ensure.ts (bypasses the per-session ensure guard since this is
+// the user explicitly asking us to write).
+function VaultSchemaSection({ vaultId }: { vaultId: string }) {
+  const audit = useSchemaAuditStore((s) => s.byVault[vaultId] ?? null);
+  const refresh = useSchemaAuditStore((s) => s.refresh);
+  const setAudit = useSchemaAuditStore((s) => s.set);
+  const clearDismissed = useSchemaBannerStore((s) => s.clearDismissed);
+  const client = useActiveVaultClient();
+  const pushToast = useToastStore((s) => s.push);
+  const [fixing, setFixing] = useState(false);
+
+  const onRefresh = async () => {
+    if (!client) return;
+    await refresh(vaultId, client);
+  };
+
+  const onFix = async () => {
+    if (!client) return;
+    setFixing(true);
+    try {
+      await fixSchema(vaultId, client);
+      // Update cached audit to ok without a refetch — the fix wrote every
+      // declared row, so the diff resolves clean. Clear the dismissed
+      // flag so a future drift (user-edited tag) re-surfaces the banner.
+      const okRows = audit?.result?.rows.map((r) => ({
+        ...r,
+        status: "ok" as const,
+        differences: [],
+      }));
+      if (okRows) setAudit(vaultId, { ok: true, missing: [], misaligned: [], rows: okRows });
+      clearDismissed(vaultId);
+      pushToast("Schema updated.", "success");
+    } catch (err) {
+      pushToast(
+        err instanceof Error ? `Schema fix failed: ${err.message}` : "Schema fix failed.",
+        "error",
+      );
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  // Pre-audit (mount before runner fires) and error states get a small
+  // status hint rather than a full per-tag table.
+  const isLoading = audit?.loading ?? !audit;
+  const result = audit?.result ?? null;
+  const error = audit?.error ?? null;
+
+  return (
+    <section className="mt-6 space-y-4 rounded-xl border border-border bg-card p-6">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <h2 className="font-serif text-xl text-fg">Vault schema</h2>
+          <p className="mt-1 text-xs text-fg-dim">
+            Notes declares three tags it uses to classify captures: <code>capture</code>,{" "}
+            <code>capture/text</code>, <code>capture/voice</code>. This panel confirms the active
+            vault has them set up; one click writes any missing or misaligned rows. Doesn't touch
+            your Tag Role choices below.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void onRefresh()}
+          disabled={isLoading || !client}
+          className="shrink-0 text-xs text-fg-dim hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isLoading ? "Checking…" : "Refresh"}
+        </button>
+      </div>
+
+      {error ? (
+        <p className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-300">
+          Audit failed: {error}
+        </p>
+      ) : null}
+
+      {!result && !error ? <p className="text-xs text-fg-dim">Loading audit…</p> : null}
+
+      {result ? (
+        <>
+          <SchemaStatusPill ok={result.ok} />
+          <ul className="space-y-2">
+            {result.rows.map((row) => (
+              <SchemaRow key={row.name} row={row} />
+            ))}
+          </ul>
+          {!result.ok ? (
+            <button
+              type="button"
+              onClick={() => void onFix()}
+              disabled={fixing || !client}
+              className="min-h-11 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {fixing ? "Setting up…" : "Set up missing tags"}
+            </button>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function SchemaStatusPill({ ok }: { ok: boolean }) {
+  return (
+    <p
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${
+        ok ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-400" : "bg-amber-400"}`}
+      />
+      {ok ? "Matches Notes' schema" : "Needs setup"}
+    </p>
+  );
+}
+
+function SchemaRow({ row }: { row: TagAuditRow }) {
+  const label = row.status === "ok" ? "ok" : row.status === "missing" ? "missing" : "misaligned";
+  const labelClass = row.status === "ok" ? "text-emerald-300" : "text-amber-300";
+  return (
+    <li className="rounded-md border border-border bg-bg/40 px-3 py-2 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <code className="font-mono text-sm text-fg">{row.name}</code>
+        <span className={`text-xs ${labelClass}`}>{label}</span>
+      </div>
+      {row.status === "misaligned" ? (
+        <p className="mt-1 text-fg-dim">Differs in: {row.differences.join(", ")}</p>
+      ) : null}
+      <p className="mt-1 text-fg-dim">{row.expected.description}</p>
+      {row.expected.parent_names ? (
+        <p className="text-fg-dim">
+          Parent: <code className="font-mono">{row.expected.parent_names.join(", ")}</code>
+        </p>
+      ) : null}
+    </li>
   );
 }
 

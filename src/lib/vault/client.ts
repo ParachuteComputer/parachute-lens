@@ -315,6 +315,20 @@ export class VaultClient {
     return this.request<TagSummary[]>("/api/tags");
   }
 
+  // Same as listTags but with the full tag-identity record per row
+  // (description, parent_names, etc). Used by the schema-audit path
+  // (notes#129) to diff vault state against `NOTES_REQUIRED_SCHEMA`.
+  async listTagsWithSchema(): Promise<
+    Array<{
+      name: string;
+      count: number;
+      description: string | null;
+      parent_names: string[] | null;
+    }>
+  > {
+    return this.request("/api/tags?include_schema=true");
+  }
+
   async deleteTag(name: string): Promise<void> {
     await this.request<undefined>(`/api/tags/${encodeURIComponent(name)}`, {
       method: "DELETE",

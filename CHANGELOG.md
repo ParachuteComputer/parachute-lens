@@ -2,6 +2,60 @@
 
 ## Unreleased
 
+### Schema-ensure audit UI — Settings panel + connect-time banner
+
+- **feat(schema): audit UI for the required Notes schema (0.3.15-rc.9).**
+  Closes notes#129. Builds directly on rc.8's `NOTES_REQUIRED_SCHEMA` +
+  `ensureNotesSchema`. Until now schema-ensure was first-capture-driven
+  (idempotent, silent). This PR adds the operator-facing audit: a
+  Settings panel that shows expected-vs-actual for each declared tag, a
+  connect-time banner that surfaces when the active vault is missing or
+  has misaligned tags, and a one-click "Set up missing tags" action.
+  - **`auditSchema(client)`** (`src/lib/vault/schema-audit.ts`) calls
+    `GET /api/tags?include_schema=true` and diffs each declared tag
+    against the vault row. Returns `{ ok, missing, misaligned, rows }`
+    with per-tag `differences: ("description" | "parent_names")[]`.
+    Treats null and empty-array `parent_names` as equivalent.
+  - **`VaultClient.listTagsWithSchema()`** wraps the schema-detail
+    variant of `GET /api/tags`. Narrow return type — only the fields
+    audit reads.
+  - **`fixSchema(vaultId, client)`** in `schema-ensure.ts` is the
+    user-driven entry point. Bypasses the per-session ensure guard
+    (user explicitly asked to write), rethrows on failure so UI can
+    show "fix failed" toast / banner error, and marks the vault as
+    ensured on success so subsequent first-captures don't redo work.
+  - **`useSchemaAuditStore`** (volatile, not persisted) holds per-vault
+    audit results with `ensure(vaultId, client)` (cache-respecting,
+    5min TTL) + `refresh()` (force-refetch) + `set()` (post-fix update
+    without refetch). Mirrors `auth-halt-store` shape.
+  - **`useSchemaBannerStore`** (persisted) tracks per-vault banner
+    dismissal under `notes:schema-banner-dismissed:<vaultId>` so
+    dismissal survives reloads. Mirrors `auth-halt-store` cross-tab
+    pattern.
+  - **`SchemaAuditRunnerMount`** at the App root auto-fires `ensure`
+    when the active vault or its client changes. No DOM, only effect.
+  - **`SchemaAuditBanner`** (`src/components/`) renders below
+    `VaultStatusBanner` — amber/yellow, less urgent than auth-halt or
+    unreachable. Two affordances: "Set up" → calls `fixSchema` then
+    marks the cached audit ok; "Dismiss" → persists per-vault. Uses
+    `<output role="status" aria-live="polite">` rather than `<div
+    role="status">` per Biome's a11y rule.
+  - **Settings "Vault schema" section** (top of the Settings page —
+    above Text size). Status pill (ok = emerald, !ok = amber), per-tag
+    rows showing expected description + parent_names, a "Refresh" link
+    and a "Set up missing tags" button. "Schema updated." toast on
+    success.
+  - **Tests.** 7 new in `schema-audit.test.ts` (ok / missing / desc
+    misalignment / parent_names misalignment / null-vs-empty
+    equivalence / row completeness / extra-tags-don't-flag). 3 new in
+    `schema-ensure.test.ts` (fixSchema bypasses session guard /
+    rethrows on failure / marks ensured after success). 4 new in
+    `schema-banner-store.test.ts` (dismiss + clear + multi-vault +
+    cross-tab reload). 6 new in `SchemaAuditBanner.test.tsx` (renders
+    nothing pre-audit / nothing on ok / renders on misalign / hides
+    when dismissed / Dismiss persists / Set up calls updateTag for
+    each + marks ok).
+
 ### Capture reshape — hierarchical capture/* tags + schema-ensure + option (d) + path-collision fix
 
 - **feat(capture): hierarchical capture tags + schema-ensure + option (d) +
