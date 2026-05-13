@@ -2,6 +2,7 @@ import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AUTH_HALT_KEY_PREFIX, useAuthHaltStore } from "./auth-halt-store";
 import { useCrossTabVaultSync } from "./cross-tab-sync";
+import { SCHEMA_BANNER_KEY_PREFIX, useSchemaBannerStore } from "./schema-banner-store";
 import { ACTIVE_KEY, VAULTS_KEY } from "./storage";
 import { useVaultStore } from "./store";
 import type { VaultRecord } from "./types";
@@ -33,12 +34,14 @@ describe("useCrossTabVaultSync", () => {
     localStorage.clear();
     useVaultStore.setState({ vaults: {}, activeVaultId: null });
     useAuthHaltStore.setState({ byVault: {} });
+    useSchemaBannerStore.setState({ dismissedByVault: {} });
   });
 
   afterEach(() => {
     localStorage.clear();
     useVaultStore.setState({ vaults: {}, activeVaultId: null });
     useAuthHaltStore.setState({ byVault: {} });
+    useSchemaBannerStore.setState({ dismissedByVault: {} });
   });
 
   it("picks up active-vault changes written by another tab", () => {
@@ -76,10 +79,24 @@ describe("useCrossTabVaultSync", () => {
     expect(useAuthHaltStore.getState().byVault.v1?.reason).toBe("from sibling tab");
   });
 
+  it("picks up schema-banner dismissals written by another tab (notes#129)", () => {
+    // Sibling tab dismissed the schema-audit banner for `v1`. The reload-
+    // from-storage path mirrors auth-halt-store's shape — same one-line
+    // fix that wired in PR #133's F1 fold.
+    localStorage.setItem(`${SCHEMA_BANNER_KEY_PREFIX}v1`, "1");
+
+    renderHook(() => useCrossTabVaultSync());
+
+    expect(useSchemaBannerStore.getState().dismissedByVault.v1).toBeUndefined();
+    fireStorageEvent(`${SCHEMA_BANNER_KEY_PREFIX}v1`, "1");
+    expect(useSchemaBannerStore.getState().dismissedByVault.v1).toBe(true);
+  });
+
   it("handles a wholesale localStorage.clear() by reloading every mirrored slice", () => {
     // Seed the store with state, then simulate a sibling clearing storage.
     useVaultStore.setState({ vaults: { v1: makeVault("v1") }, activeVaultId: "v1" });
     useAuthHaltStore.setState({ byVault: { v1: { vaultId: "v1", reason: "stale", at: 0 } } });
+    useSchemaBannerStore.setState({ dismissedByVault: { v1: true } });
 
     renderHook(() => useCrossTabVaultSync());
     fireStorageEvent(null, null);
@@ -87,17 +104,20 @@ describe("useCrossTabVaultSync", () => {
     expect(useVaultStore.getState().vaults).toEqual({});
     expect(useVaultStore.getState().activeVaultId).toBeNull();
     expect(useAuthHaltStore.getState().byVault).toEqual({});
+    expect(useSchemaBannerStore.getState().dismissedByVault).toEqual({});
   });
 
   it("ignores unrelated keys", () => {
     renderHook(() => useCrossTabVaultSync());
     const before = useVaultStore.getState();
     const beforeHalt = useAuthHaltStore.getState();
+    const beforeBanner = useSchemaBannerStore.getState();
 
     fireStorageEvent("some-other-app:setting", "value");
 
     expect(useVaultStore.getState()).toBe(before);
     expect(useAuthHaltStore.getState()).toBe(beforeHalt);
+    expect(useSchemaBannerStore.getState()).toBe(beforeBanner);
   });
 
   it("removes the listener on unmount", () => {
