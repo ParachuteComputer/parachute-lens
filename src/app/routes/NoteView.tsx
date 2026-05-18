@@ -1,6 +1,7 @@
 import { DeleteNoteButton } from "@/components/DeleteNoteButton";
-import { MarkdownView, buildWikilinkResolver } from "@/components/MarkdownView";
+import { buildWikilinkResolver } from "@/components/MarkdownView";
 import { NeighborhoodGraph } from "@/components/NeighborhoodGraph";
+import { NoteRenderer } from "@/components/NoteRenderer";
 import { PinArchiveButtons } from "@/components/PinArchiveButtons";
 import { TranscriptionStatus } from "@/components/TranscriptionStatus";
 import { pushRecent } from "@/lib/quick-switch/recents";
@@ -92,7 +93,7 @@ function NoteBody({ note }: { note: Note }) {
 
         <TranscriptionStatus content={note.content ?? ""} />
 
-        <MarkdownView content={note.content ?? ""} resolve={resolver} />
+        <NoteRenderer note={note} resolve={resolver} />
 
         {note.attachments && note.attachments.length > 0 ? (
           <section className="mt-10 border-t border-border pt-6">

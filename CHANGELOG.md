@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+### Phase 2 polish
+
+- **chore(render): fold reviewer polish nits (0.3.15-rc.13).**
+  `escapeHtml` in `src/lib/render/highlight.ts` now escapes `"` (→
+  `&quot;`) and `'` (→ `&#x27;`) in addition to `&` / `<` / `>` — current
+  callers only use content context, but the generic name invites future
+  attribute-context use, so close the hole up front. Added two test
+  cases in `format.test.ts` pinning `formatForPath` hidden-file behavior
+  (`.gitignore` → `"plain"`, `.ts` → `"code"`) — falls out of the
+  extension-driven model, but worth pinning since it was unspecified.
+
+### Phase 2 format-aware rendering
+
+- **feat(render): NoteRenderer dispatches CSV / JSON / YAML / code to
+  format-specific renderers (0.3.15-rc.12).** Closes #138. Phase 1
+  (parachute-vault) added file-extension support so non-markdown notes can
+  be stored; Phase 2 (this) renders them appropriately on the read path.
+
+  A new `NoteRenderer` dispatcher in `src/components/NoteRenderer.tsx`
+  examines the note's path extension and routes to one of six renderers:
+  - `MarkdownView` (unchanged) — `.md`, `.mdx`, `.markdown`, no extension
+  - `CsvRenderer` — `.csv` rendered as an HTML table (first row =
+    headers); inline RFC-4180 parser handles quoted cells, escaped
+    quotes, newlines-in-cells, CRLF, missing trailing newline
+  - `JsonRenderer` — `.json` pretty-printed + syntax-highlighted; invalid
+    JSON falls back to the plain monospace block
+  - `YamlRenderer` — `.yaml` / `.yml` syntax-highlighted (no re-emit;
+    bytes render as authored)
+  - `CodeRenderer` — `.ts` / `.tsx` / `.js` / `.jsx` / `.py` / `.rs` /
+    `.go` / `.sh` syntax-highlighted via `highlight.js/lib/core` with
+    explicit per-language registration (avoids the `/common` bundle's
+    ~35 KB of unused languages)
+  - `PlainRenderer` — fallback for unknown extensions and parse failures
+
+  All three existing call sites (`NoteView`, `NoteEditor` preview,
+  `NoteNew` preview) now go through `NoteRenderer`. The editor preview
+  reads `draft.path` so renaming a draft to `.csv` switches the preview
+  live.
+
+  No new dependencies — `highlight.js` was already a dep (used by
+  rehype-highlight for fenced code in markdown notes); the new renderers
+  reuse it directly. The hljs github theme already imported in
+  `styles/index.css` styles both code paths uniformly.
+
+  Bundle: `NoteRenderer` chunk 340.80 kB / 103.55 kB gzip (was
+  `MarkdownView` 337.29 kB / 102.30 kB gzip) — delta **+3.51 kB raw /
+  +1.25 kB gzip**. Total PWA precache 1578.53 KiB (was 1574.85 KiB).
+
+  Deferred (out of scope for #138): MDX with custom React components in
+  the markdown body, image-format thumbnails in non-markdown notes, and
+  CodeMirror language-aware editing (the editor still uses markdown
+  grammar for every note — Phase 3).
+
 ### Text-size ramp retune
 
 - **tune(ui): widen text-size ramp + bump default (0.3.15-rc.11).**
