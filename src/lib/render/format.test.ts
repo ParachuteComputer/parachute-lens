@@ -39,6 +39,17 @@ describe("formatForPath", () => {
     expect(formatForPath("blob.bin")).toBe("plain");
     expect(formatForPath("snap.png")).toBe("plain");
   });
+
+  // Pin the documented intent for hidden-file paths (no body before the
+  // dot). The dispatch is purely extension-driven, so `.gitignore` reads
+  // as ext="gitignore" → "plain", and `.ts` reads as ext="ts" → "code".
+  // This isn't a deliberate hidden-file rule — it falls out of the
+  // extension model — but the behavior is the right one to keep, so pin
+  // it.
+  it("treats hidden-file paths by extension (no special-case)", () => {
+    expect(formatForPath(".gitignore")).toBe("plain");
+    expect(formatForPath(".ts")).toBe("code");
+  });
 });
 
 describe("extensionOf", () => {

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Phase 2 polish
+
+- **chore(render): fold reviewer polish nits (0.3.15-rc.13).**
+  `escapeHtml` in `src/lib/render/highlight.ts` now escapes `"` (→
+  `&quot;`) and `'` (→ `&#x27;`) in addition to `&` / `<` / `>` — current
+  callers only use content context, but the generic name invites future
+  attribute-context use, so close the hole up front. Added two test
+  cases in `format.test.ts` pinning `formatForPath` hidden-file behavior
+  (`.gitignore` → `"plain"`, `.ts` → `"code"`) — falls out of the
+  extension-driven model, but worth pinning since it was unspecified.
+
 ### Phase 2 format-aware rendering
 
 - **feat(render): NoteRenderer dispatches CSV / JSON / YAML / code to

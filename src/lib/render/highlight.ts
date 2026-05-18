@@ -45,6 +45,15 @@ export function highlightAs(code: string, language: string): string {
   }
 }
 
+// Complete for both content (`<code>…</code>`) and attribute (`="…"`)
+// contexts. Current callers only use the content form, but the generic
+// name invites future attribute-context use — escape both quote chars
+// up front so a future caller doesn't reintroduce an XSS surface.
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 }
