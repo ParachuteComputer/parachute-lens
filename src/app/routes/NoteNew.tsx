@@ -3,7 +3,8 @@ import { AttachmentPicker } from "@/components/AttachmentPicker";
 import { AttachmentUploadList } from "@/components/AttachmentUploadList";
 import type { CodeMirrorEditorHandle } from "@/components/CodeMirrorEditor";
 import { CodeMirrorEditor } from "@/components/CodeMirrorEditor";
-import { MarkdownView, buildWikilinkResolver } from "@/components/MarkdownView";
+import { buildWikilinkResolver } from "@/components/MarkdownView";
+import { NoteRenderer } from "@/components/NoteRenderer";
 import { TagEditor, normalizeTag } from "@/components/TagEditor";
 import { useAttachmentUploader } from "@/components/useAttachmentUploader";
 import { useToastStore } from "@/lib/toast/store";
@@ -233,7 +234,10 @@ export function NoteNew() {
           </AttachmentDropZone>
           <div className="min-w-0 overflow-auto rounded-md border border-border bg-card p-4">
             {draft.content.trim() ? (
-              <MarkdownView content={draft.content} resolve={resolver} />
+              <NoteRenderer
+                note={{ path: draft.path, content: draft.content }}
+                resolve={resolver}
+              />
             ) : (
               <p className="text-sm text-fg-dim">Preview appears here as you type.</p>
             )}

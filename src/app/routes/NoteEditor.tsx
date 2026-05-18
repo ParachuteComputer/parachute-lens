@@ -4,7 +4,8 @@ import { AttachmentUploadList } from "@/components/AttachmentUploadList";
 import type { CodeMirrorEditorHandle } from "@/components/CodeMirrorEditor";
 import { CodeMirrorEditor } from "@/components/CodeMirrorEditor";
 import { DeleteNoteButton } from "@/components/DeleteNoteButton";
-import { MarkdownView, buildWikilinkResolver } from "@/components/MarkdownView";
+import { buildWikilinkResolver } from "@/components/MarkdownView";
+import { NoteRenderer } from "@/components/NoteRenderer";
 import { PinArchiveButtons } from "@/components/PinArchiveButtons";
 import { RemoveAttachmentButton } from "@/components/RemoveAttachmentButton";
 import { TagEditor, normalizeTag } from "@/components/TagEditor";
@@ -316,7 +317,7 @@ function EditorSurface({ note }: { note: Note }) {
             mobilePane === "preview" ? "" : "hidden lg:block"
           }`}
         >
-          <MarkdownView content={previewContent} resolve={resolver} />
+          <NoteRenderer note={{ path: draft.path, content: previewContent }} resolve={resolver} />
         </div>
       </div>
 
